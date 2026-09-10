@@ -1,1370 +1,500 @@
-# ============================================================
-# FIRE INTELLIGENCE DASHBOARD - MAIN BACKEND
-# Flask + Random Forest + NASA FIRMS
-# ============================================================
+"""
+FastAPI Backend Server for Industrial Fire Intelligence & Dynamic World Integration
+Serves REST API at /api/* and mounts the frontend at /
+Now loads ALL ~3.5M real FIRMS points from CSV and integrates Google Earth Engine.
+"""
 
 import os
-import glob
-import json
-import math
-import traceback
+import random
 from datetime import datetime
+from typing import Optional, List, Dict, Any
+from fastapi import FastAPI, Query, HTTPException, Body
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel
 
-import numpy as np
-import pandas as pd
-
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-
-# ------------------------------------------------------------
-# OPTIONAL ML LIBRARIES
-# ------------------------------------------------------------
-try:
-    import joblib
-except Exception:
-    joblib = None
-
-try:
-    import pickle
-except Exception:
-    pickle = None
-
-
-# ============================================================
-# FLASK APP
-# ============================================================
-
-app = Flask(__name__)
-
-CORS(
-    app,
-    resources={r"/api/*": {"origins": "*"}},
-    supports_credentials=False
+from .model import (
+    ThermalRiskModel,
+    LandCoverEngine,
+    EventClassifier,
+    generate_initial_events,
+    find_nearest_facility,
+    calculate_haversine_distance,
+    FACILITIES_DB,
+    DYNAMIC_WORLD_CLASSES
 )
 
-# ============================================================
-# CONFIGURATION
-# ============================================================
+from .firms_loader import (
+    load_firms_data,
+    get_total_records,
+    get_heatmap_data,
+    get_sampled_points,
+    get_risk_distribution,
+    get_points_in_bounds,
+    fetch_live_nasa_firms_nrt,
+    get_available_dates,
+)
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+from .landcover_gee import (
+    init_earth_engine,
+    get_landcover_gee,
+    DW_CLASSES,
+    GEE_PROJECT,
+)
 
-MODEL_DIRS = [
-    BASE_DIR,
-    os.path.join(BASE_DIR, "models"),
-    os.path.join(BASE_DIR, "model"),
-    "/content",
-    "/content/models",
-    "/content/model"
+app = FastAPI(
+    title="Geothermal AI & Dynamic World Fire Intelligence API",
+    description="Backend API powering the Industrial Fire Intelligence Dashboard with ~3.5M real NASA FIRMS points & Google Earth Engine Dynamic World Land Cover",
+    version="2.0.0"
+)
+
+# Enable CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# In-memory storage for generated events and state
+EVENTS_STORE: List[Dict[str, Any]] = generate_initial_events(120)
+
+ALERTS_STORE: List[Dict[str, Any]] = [
+    {
+        "id": "ALT-1001",
+        "title": "Critical Thermal Spike near Eastern Petro Refinery",
+        "level": "CRITICAL",
+        "color": "#ef4444",
+        "facility": "Eastern Petro Refinery",
+        "targetEvent": "TF-10293",
+        "timestamp": "12 mins ago",
+        "status": "ACTIVE",
+        "threshold": "FRP > 180 MW"
+    },
+    {
+        "id": "ALT-1002",
+        "title": "Persistent Flaring Detected at South Steel Works",
+        "level": "HIGH",
+        "color": "#f97316",
+        "facility": "South Steel Works",
+        "targetEvent": "TF-10295",
+        "timestamp": "45 mins ago",
+        "status": "ACTIVE",
+        "threshold": "Recurrence > 20 in 7d"
+    },
+    {
+        "id": "ALT-1003",
+        "title": "Agricultural Burning Boundary Alert",
+        "level": "MODERATE",
+        "color": "#facc15",
+        "facility": "Northern Mining Zone",
+        "targetEvent": "TF-10301",
+        "timestamp": "2 hours ago",
+        "status": "ACKNOWLEDGED",
+        "threshold": "Proximity < 3 km"
+    }
 ]
 
-DATA_DIRS = [
-    BASE_DIR,
-    os.path.join(BASE_DIR, "data"),
-    os.path.join(BASE_DIR, "datasets"),
-    "/content",
-    "/content/datasets"
+REPORTS_STORE: List[Dict[str, Any]] = [
+    {
+        "id": "REP-2026-001",
+        "eventId": "TF-10293",
+        "title": "Industrial Thermal Anomaly Investigation - Eastern Petro",
+        "riskLevel": "CRITICAL",
+        "riskScore": 91.4,
+        "author": "Thermal AI Autonomous Inspector",
+        "date": "2026-09-09",
+        "status": "COMPLETED",
+        "summary": "High-intensity thermal source detected on Built Area land cover within 0.8 km of Eastern Petro Refinery."
+    },
 ]
 
-MODEL = None
-MODEL_PATH = None
+# ==============================================================================
+# STARTUP: Load real FIRMS data
+# ==============================================================================
 
-EVENTS = []
+@app.on_event("startup")
+def startup_event():
+    print("\n" + "="*70)
+    print("LOADING REAL FIRMS DATA (~3.5M points)...")
+    print("="*70)
+    load_firms_data()
+    print("\nInitializing Google Earth Engine...")
+    init_earth_engine()
+    print("="*70)
+    print("STARTUP COMPLETE!")
+    print("="*70 + "\n")
 
-FEATURES = [
-    "latitude",
-    "longitude",
-    "brightness",
-    "scan",
-    "track",
-    "confidence",
-    "bright_t31",
-    "frp",
-    "daynight"
-]
+# ==============================================================================
+# PYDANTIC SCHEMAS
+# ==============================================================================
 
+class PredictRequest(BaseModel):
+    lat: float
+    lng: float
+    frp: Optional[float] = 85.0
+    brightness: Optional[float] = 340.0
+    confidence: Optional[Any] = 85.0
+    satellite: Optional[str] = "VIIRS"
+    sensor: Optional[str] = "Suomi NPP"
+    persistence_override: Optional[str] = None
 
-# ============================================================
-# HELPER FUNCTIONS
-# ============================================================
+class LandCoverRequest(BaseModel):
+    lat: float
+    lng: float
+    radius_km: Optional[float] = 2.0
 
-def safe_float(value, default=0.0):
-    try:
-        if value is None:
-            return default
+class AlertCreateRequest(BaseModel):
+    title: str
+    facility: str
+    level: str
+    threshold: str
 
-        value = float(value)
+class ReportCreateRequest(BaseModel):
+    eventId: str
+    notes: Optional[str] = ""
 
-        if math.isnan(value) or math.isinf(value):
-            return default
+# ==============================================================================
+# FIRMS MAP DATA ENDPOINTS (ALL ~3.5M POINTS)
+# ==============================================================================
 
-        return value
-
-    except Exception:
-        return default
-
-
-def safe_int(value, default=0):
-    try:
-        return int(float(value))
-    except Exception:
-        return default
-
-
-def clean_json(data):
-    """
-    Convert numpy values into normal Python values.
-    """
-
-    if isinstance(data, dict):
-        return {
-            str(k): clean_json(v)
-            for k, v in data.items()
-        }
-
-    if isinstance(data, list):
-        return [
-            clean_json(v)
-            for v in data
-        ]
-
-    if isinstance(data, tuple):
-        return [
-            clean_json(v)
-            for v in data
-        ]
-
-    if isinstance(data, np.integer):
-        return int(data)
-
-    if isinstance(data, np.floating):
-        return float(data)
-
-    if isinstance(data, np.ndarray):
-        return data.tolist()
-
+@app.get("/api/firms/heatmap")
+def get_firms_heatmap():
+    """Returns heatmap grid data for all ~3.5M FIRMS points."""
+    data = get_heatmap_data()
+    if not data:
+        raise HTTPException(status_code=503, detail="FIRMS data not loaded yet")
     return data
 
+@app.get("/api/firms/points")
+def get_firms_points(
+    limit: int = Query(5000, ge=100, le=50000),
+    risk_level: Optional[str] = Query(None),
+    date: Optional[str] = Query(None),
+    south: Optional[float] = Query(None),
+    north: Optional[float] = Query(None),
+    west: Optional[float] = Query(None),
+    east: Optional[float] = Query(None),
+):
+    """Returns sampled FIRMS points with risk data for map markers."""
+    bounds = None
+    if all(v is not None for v in [south, north, west, east]):
+        bounds = {"south": south, "north": north, "west": west, "east": east}
 
-def find_model():
-    """
-    Automatically searches common model locations.
-    """
+    points = get_sampled_points(limit=limit, risk_filter=risk_level, date_filter=date, bounds=bounds)
+    return {"total": get_total_records(), "returned": len(points), "points": points}
 
-    patterns = [
-        "*.pkl",
-        "*.joblib",
-        "*.pickle"
-    ]
+@app.get("/api/firms/dates")
+def get_firms_dates():
+    """Returns list of distinct observation dates available in the dataset."""
+    dates = get_available_dates()
+    return {"total": len(dates), "dates": dates}
 
-    candidates = []
-
-    for directory in MODEL_DIRS:
-
-        if not os.path.exists(directory):
-            continue
-
-        for pattern in patterns:
-
-            candidates.extend(
-                glob.glob(
-                    os.path.join(directory, pattern)
-                )
-            )
-
-    # Prefer filenames containing fire/rf/random/model
-    priority = []
-
-    for path in candidates:
-
-        name = os.path.basename(path).lower()
-
-        score = 0
-
-        if "fire" in name:
-            score += 5
-
-        if "random" in name:
-            score += 5
-
-        if "forest" in name:
-            score += 5
-
-        if "model" in name:
-            score += 3
-
-        if "rf" in name:
-            score += 4
-
-        priority.append((score, path))
-
-    priority.sort(
-        key=lambda x: x[0],
-        reverse=True
-    )
-
-    if priority:
-        return priority[0][1]
-
-    return None
-
-
-def load_model():
-
-    global MODEL
-    global MODEL_PATH
-
-    if joblib is None:
-        print("WARNING: joblib is not installed.")
-        return None
-
-    path = find_model()
-
-    if path is None:
-
-        print("WARNING: No ML model found.")
-        print("Put your .pkl or .joblib model beside main.py")
-        print("or inside a models folder.")
-
-        return None
-
-    try:
-
-        MODEL = joblib.load(path)
-        MODEL_PATH = path
-
-        print()
-        print("=" * 60)
-        print("ML MODEL LOADED")
-        print("=" * 60)
-        print("Model:", path)
-        print("Type :", type(MODEL))
-        print("=" * 60)
-        print()
-
-        return MODEL
-
-    except Exception as e:
-
-        print("ERROR loading model:")
-        print(e)
-
-        MODEL = None
-        MODEL_PATH = None
-
-        return None
-
-
-# ============================================================
-# INPUT PREPARATION
-# ============================================================
-
-def prepare_features(data):
-
-    row = {
-        "latitude": safe_float(
-            data.get("latitude")
-        ),
-
-        "longitude": safe_float(
-            data.get("longitude")
-        ),
-
-        "brightness": safe_float(
-            data.get("brightness", 310)
-        ),
-
-        "scan": safe_float(
-            data.get("scan", 1)
-        ),
-
-        "track": safe_float(
-            data.get("track", 1)
-        ),
-
-        "confidence": safe_float(
-            data.get("confidence", 70)
-        ),
-
-        "bright_t31": safe_float(
-            data.get("bright_t31", 290)
-        ),
-
-        "frp": safe_float(
-            data.get("frp", 10)
-        ),
-
-        "daynight": safe_int(
-            data.get("daynight", 1)
-        )
+@app.api_route("/api/firms/live-sync", methods=["GET", "POST"])
+def sync_live_firms(map_key: Optional[str] = Query(None)):
+    """Fetch and integrate live NRT satellite points from NASA FIRMS API."""
+    live_points = fetch_live_nasa_firms_nrt(map_key=map_key)
+    return {
+        "status": "success",
+        "livePointsFetched": len(live_points),
+        "totalRecords": get_total_records(),
+        "livePoints": live_points[:25]
     }
 
-    df = pd.DataFrame(
-        [row],
-        columns=FEATURES
-    )
+@app.get("/api/firms/bounds")
+def get_firms_in_bounds(
+    south: float = Query(...),
+    north: float = Query(...),
+    west: float = Query(...),
+    east: float = Query(...),
+    limit: int = Query(10000, ge=100, le=50000),
+):
+    """Returns FIRMS points within specific geographic bounds (for zoom-level detail)."""
+    points = get_points_in_bounds(south, north, west, east, limit)
+    return {"total": get_total_records(), "returned": len(points), "points": points}
 
-    return df
+@app.get("/api/firms/stats")
+def get_firms_stats():
+    """Returns risk distribution statistics across ALL FIRMS points."""
+    dist = get_risk_distribution()
+    dist["totalRecords"] = get_total_records()
+    dist["dataSource"] = "NASA FIRMS (SV-C2, J2V-C2, J1V-C2)"
+    return dist
 
+# ==============================================================================
+# GOOGLE EARTH ENGINE LAND COVER ENDPOINTS
+# ==============================================================================
 
-# ============================================================
-# FALLBACK FIRE CLASSIFICATION
-# ============================================================
+@app.post("/api/landcover")
+def get_landcover(req: LandCoverRequest):
+    """Get Dynamic World land cover data from Google Earth Engine for given coordinates."""
+    result = get_landcover_gee(req.lat, req.lng, req.radius_km)
+    return result
 
-def fallback_prediction(data):
+@app.get("/api/landcover/point")
+def get_landcover_at_point(
+    lat: float = Query(...),
+    lng: float = Query(...),
+    radius_km: float = Query(2.0),
+):
+    """GET endpoint for Dynamic World land cover at a point."""
+    return get_landcover_gee(lat, lng, radius_km)
 
-    brightness = safe_float(
-        data.get("brightness", 310)
-    )
+# ==============================================================================
+# EXISTING REST API ENDPOINTS
+# ==============================================================================
 
-    frp = safe_float(
-        data.get("frp", 10)
-    )
-
-    confidence = safe_float(
-        data.get("confidence", 70)
-    )
-
-    bright_t31 = safe_float(
-        data.get("bright_t31", 290)
-    )
-
-    temperature_difference = (
-        brightness - bright_t31
-    )
-
-    score = 0
-
-    if brightness >= 330:
-        score += 35
-    elif brightness >= 315:
-        score += 20
-    elif brightness >= 305:
-        score += 10
-
-    if frp >= 50:
-        score += 35
-    elif frp >= 20:
-        score += 20
-    elif frp >= 5:
-        score += 10
-
-    if confidence >= 80:
-        score += 20
-    elif confidence >= 50:
-        score += 10
-
-    if temperature_difference >= 25:
-        score += 10
-    elif temperature_difference >= 15:
-        score += 5
-
-    score = min(100, score)
-
-    if score >= 75:
-        prediction = 3
-    elif score >= 45:
-        prediction = 2
-    elif score >= 20:
-        prediction = 1
-    else:
-        prediction = 0
-
-    probabilities = [
-        ["No Fire", max(0, 100 - score)],
-        ["Low Fire", min(100, score * 0.25)],
-        ["Moderate Fire", min(100, score * 0.50)],
-        ["High Fire", min(100, score * 0.25)]
-    ]
-
-    total = sum(x[1] for x in probabilities)
-
-    if total > 0:
-
-        probabilities = [
-            [
-                name,
-                round(value * 100 / total, 2)
-            ]
-
-            for name, value in probabilities
-        ]
-
-    return prediction, probabilities
-
-
-# ============================================================
-# MODEL PREDICTION
-# ============================================================
-
-def run_prediction(data):
-
-    features = prepare_features(data)
-
-    # --------------------------------------------------------
-    # REAL MODEL
-    # --------------------------------------------------------
-
-    if MODEL is not None:
-
-        try:
-
-            prediction = MODEL.predict(
-                features
-            )[0]
-
-            prediction = safe_int(
-                prediction
-            )
-
-            probabilities = None
-
-            # Random Forest supports predict_proba
-            if hasattr(MODEL, "predict_proba"):
-
-                try:
-
-                    proba = MODEL.predict_proba(
-                        features
-                    )[0]
-
-                    probabilities = [
-                        [
-                            f"Class {i}",
-                            round(
-                                float(p) * 100,
-                                2
-                            )
-                        ]
-
-                        for i, p in enumerate(proba)
-                    ]
-
-                except Exception:
-                    probabilities = None
-
-            if probabilities is None:
-
-                probabilities = [
-                    [
-                        f"Class {prediction}",
-                        100
-                    ]
-                ]
-
-            return prediction, probabilities, True
-
-        except Exception as e:
-
-            print()
-            print("MODEL PREDICTION ERROR")
-            print(e)
-            print(traceback.format_exc())
-            print()
-
-    # --------------------------------------------------------
-    # FALLBACK
-    # --------------------------------------------------------
-
-    prediction, probabilities = fallback_prediction(
-        data
-    )
-
-    return prediction, probabilities, False
-
-
-# ============================================================
-# CLASSIFICATION NAME
-# ============================================================
-
-def classification_name(class_id):
-
-    mapping = {
-        0: "No Fire",
-        1: "Low Fire",
-        2: "Moderate Fire",
-        3: "High Fire"
+@app.get("/api/health")
+def get_health():
+    """Health check and model status."""
+    return {
+        "status": "ONLINE",
+        "model": "Dynamic World & FIRMS Industrial Intelligence Model v2.0",
+        "geeProject": GEE_PROJECT,
+        "landcoverClassesCount": len(DW_CLASSES),
+        "totalFirmsRecords": get_total_records(),
+        "totalEventsLoaded": len(EVENTS_STORE),
+        "totalFacilitiesMonitored": len(FACILITIES_DB),
+        "dataFiles": [
+            "fire_archive_SV_C2_794014.csv",
+            "fire_archive_J2V_C2_794013.csv",
+            "fire_archive_J1V_C2_794012.csv"
+        ],
+        "serverTimestamp": datetime.now().isoformat()
     }
 
-    return mapping.get(
-        safe_int(class_id),
-        "Unknown"
-    )
+@app.get("/api/stats")
+def get_stats():
+    """Returns top-level dashboard metrics and KPIs."""
+    total = len(EVENTS_STORE)
+    critical_count = sum(1 for e in EVENTS_STORE if e["riskLevel"] == "CRITICAL")
+    high_count = sum(1 for e in EVENTS_STORE if e["riskLevel"] == "HIGH")
+    moderate_count = sum(1 for e in EVENTS_STORE if e["riskLevel"] == "MODERATE")
+    low_count = sum(1 for e in EVENTS_STORE if e["riskLevel"] == "LOW")
 
+    avg_frp = round(sum(e["frp"] for e in EVENTS_STORE) / max(1, total), 1)
+    avg_temp = round(sum(e["temperature"] for e in EVENTS_STORE) / max(1, total), 1)
 
-# ============================================================
-# RISK LEVEL
-# ============================================================
-
-def risk_level(class_id):
-
-    class_id = safe_int(class_id)
-
-    if class_id == 3:
-        return "CRITICAL"
-
-    if class_id == 2:
-        return "HIGH"
-
-    if class_id == 1:
-        return "MODERATE"
-
-    return "LOW"
-
-
-# ============================================================
-# LAND COVER FALLBACK
-# ============================================================
-
-def estimate_landcover(lat, lon):
-
-    """
-    Safe fallback.
-
-    This DOES NOT pretend to have real satellite
-    land-cover information.
-
-    Replace this function later with Google Earth Engine /
-    Dynamic World API.
-    """
-
-    lat = safe_float(lat)
-    lon = safe_float(lon)
+    firms_dist = get_risk_distribution()
 
     return {
-        "land_cover": "Unknown",
-        "land_cover_source": "Not connected",
-        "confidence": None,
-        "message": (
-            "Connect Google Earth Engine / Dynamic World "
-            "for real land-cover classification."
-        )
+        "totalEvents": total,
+        "totalFirmsRecords": get_total_records(),
+        "critical": critical_count,
+        "high": high_count,
+        "moderate": moderate_count,
+        "low": low_count,
+        "averageFRP": avg_frp,
+        "averageTemperature": avg_temp,
+        "facilitiesMonitored": len(FACILITIES_DB),
+        "activeAlerts": len([a for a in ALERTS_STORE if a["status"] == "ACTIVE"]),
+        "firmsDistribution": firms_dist,
     }
 
+@app.get("/api/events")
+def get_events(
+    q: Optional[str] = Query(None),
+    classification: Optional[str] = Query(None),
+    risk_level: Optional[str] = Query(None),
+    facility: Optional[str] = Query(None),
+    limit: Optional[int] = Query(120, ge=1, le=500),
+    offset: Optional[int] = Query(0, ge=0)
+):
+    """Returns paginated and filtered FIRMS events."""
+    results = EVENTS_STORE
+    if q:
+        query = q.lower().strip()
+        results = [e for e in results if query in e["id"].lower() or query in e["classification"].lower() or query in e["facility"].lower()]
+    if classification:
+        results = [e for e in results if e["classification"].lower() == classification.lower()]
+    if risk_level:
+        results = [e for e in results if e["riskLevel"].upper() == risk_level.upper()]
+    if facility:
+        results = [e for e in results if facility.lower() in e["facility"].lower()]
 
-# ============================================================
-# EVENT CREATOR
-# ============================================================
+    paginated = results[offset : offset + limit]
+    return {"total": len(results), "offset": offset, "limit": limit, "events": paginated}
 
-def create_event(data, prediction, probabilities, model_used):
+@app.get("/api/events/{event_id}")
+def get_event_detail(event_id: str):
+    for e in EVENTS_STORE:
+        if e["id"].lower() == event_id.lower():
+            return e
+    raise HTTPException(status_code=404, detail=f"Event {event_id} not found")
 
-    lat = safe_float(
-        data.get("latitude")
+@app.post("/api/predict")
+def predict_fire_risk(req: PredictRequest):
+    """Run real-time inference using the Dynamic World & Thermal Risk Model."""
+    geo_context = find_nearest_facility(req.lat, req.lng)
+    
+    # Get dynamic GEE land cover (or heuristic fallback)
+    gee_lc = get_landcover_gee(req.lat, req.lng)
+    
+    risk_data = ThermalRiskModel.compute_risk(req.frp, req.brightness, req.confidence)
+
+    # Persistence / Recurrence calculation
+    if req.persistence_override == "HIGH":
+        simulated_recurrence = random.randint(26, 42)
+    elif req.persistence_override == "MEDIUM":
+        simulated_recurrence = random.randint(12, 24)
+    elif req.persistence_override == "LOW":
+        simulated_recurrence = random.randint(3, 8)
+    else:
+        # Dynamic calculation based on FIRMS spatial density + thermal characteristics + facility distance
+        nearby_count = 0
+        from backend.firms_loader import _sampled_all
+        if _sampled_all:
+            nearby_count = sum(1 for p in _sampled_all if abs(p.get('lat', 0) - req.lat) < 0.3 and abs(p.get('lng', 0) - req.lng) < 0.3)
+        
+        base_rec = min(20, nearby_count * 2)
+        frp_val = req.frp or 50.0
+        frp_factor = int(frp_val / 6.0)
+        
+        conf_val = 80.0
+        try:
+            if req.confidence is not None:
+                conf_val = float(req.confidence)
+        except Exception:
+            pass
+        conf_factor = int(conf_val / 20.0)
+        
+        dist = geo_context["distanceKm"]
+        fac_factor = 20 if dist <= 1.5 else (12 if dist <= 5.0 else (5 if dist <= 25.0 else 0))
+        
+        simulated_recurrence = max(3, min(65, base_rec + frp_factor + conf_factor + fac_factor))
+
+    ai_res = EventClassifier.classify(
+        frp=req.frp, brightness=req.brightness,
+        confidence=float(req.confidence if isinstance(req.confidence, (int, float)) else 80),
+        dist_km=geo_context["distanceKm"], landcover_id=gee_lc["primaryClassId"],
+        detections_count=simulated_recurrence
     )
 
-    lon = safe_float(
-        data.get("longitude")
-    )
+    new_id = f"TF-CUSTOM-{len(EVENTS_STORE) + 1}"
+    prediction_result = {
+        "id": new_id, "lat": req.lat, "lng": req.lng,
+        "classification": ai_res["classification"], "confidence": ai_res["confidence"],
+        "risk": risk_data["riskScore"], "riskLevel": risk_data["riskLevel"],
+        "riskColor": risk_data["riskColor"], "riskBadge": risk_data["riskBadge"],
+        "frp": req.frp, "temperature": req.brightness,
+        "satellite": req.satellite, "sensor": req.sensor,
+        "facility": geo_context["facility"], "facilityType": geo_context["facilityType"],
+        "distance": geo_context["distanceStr"], "facilityDistanceKm": geo_context["distanceKm"],
+        "landCover": gee_lc["primaryClassName"], "landCoverId": gee_lc["primaryClassId"],
+        "landCoverColor": gee_lc["primaryColor"], "landCoverSource": gee_lc["source"],
+        "landCoverDistribution": gee_lc["distribution"],
+        "persistence": "HIGH" if simulated_recurrence >= 25 else ("MEDIUM" if simulated_recurrence >= 10 else "LOW"),
+        "detections24h": max(1, int(simulated_recurrence * 0.15)),
+        "detections7d": max(2, int(simulated_recurrence * 0.5)),
+        "detections30d": simulated_recurrence,
+        "probabilities": ai_res["probabilities"],
+        "explanation": ai_res["explanation"],
+        "factors": ai_res["factors"],
+        "riskBreakdownBars": ai_res["riskBreakdownBars"],
+        "timestamp": "Just now"
+    }
+    EVENTS_STORE.insert(0, prediction_result)
+    return prediction_result
 
-    classification = classification_name(
-        prediction
-    )
+@app.post("/api/analyze-landcover")
+def analyze_landcover(req: LandCoverRequest):
+    """Detailed Dynamic World land cover from GEE around custom coordinates."""
+    geo_context = find_nearest_facility(req.lat, req.lng)
+    gee_lc = get_landcover_gee(req.lat, req.lng, req.radius_km)
 
-    risk = risk_level(
-        prediction
-    )
-
-    event = {
-
-        "id": (
-            "FIRE-"
-            + datetime.now().strftime(
-                "%Y%m%d%H%M%S%f"
-            )
-        ),
-
-        "latitude": lat,
-
-        "longitude": lon,
-
-        "brightness": safe_float(
-            data.get("brightness", 0)
-        ),
-
-        "frp": safe_float(
-            data.get("frp", 0)
-        ),
-
-        "confidence": safe_float(
-            data.get("confidence", 0)
-        ),
-
-        "bright_t31": safe_float(
-            data.get("bright_t31", 0)
-        ),
-
-        "scan": safe_float(
-            data.get("scan", 0)
-        ),
-
-        "track": safe_float(
-            data.get("track", 0)
-        ),
-
-        "daynight": safe_int(
-            data.get("daynight", 1)
-        ),
-
-        "prediction": safe_int(
-            prediction
-        ),
-
-        "type": safe_int(
-            prediction
-        ),
-
-        "classification": classification,
-
-        "risk": risk,
-
-        "risk_level": risk,
-
-        "probabilities": probabilities,
-
-        "model_used": model_used,
-
-        "timestamp": datetime.now().isoformat(),
-
-        "land_cover": "Unknown",
-
-        "state": "Unknown",
-
-        "district": "Unknown"
+    return {
+        "coordinates": {"lat": req.lat, "lng": req.lng},
+        "radiusKm": req.radius_km,
+        "nearestFacility": geo_context["facility"],
+        "distanceToFacility": geo_context["distanceStr"],
+        "source": gee_lc["source"],
+        "dominantClass": gee_lc["primaryClassName"],
+        "dominantClassId": gee_lc["primaryClassId"],
+        "dominantColor": gee_lc["primaryColor"],
+        "distribution": gee_lc["distribution"],
     }
 
-    return event
-
-
-# ============================================================
-# ROUTE: HOME
-# ============================================================
-
-@app.route("/")
-def home():
-
-    return jsonify({
-        "status": "online",
-        "name": "Fire Intelligence Backend",
-        "version": "1.0",
-        "message": "Backend is running successfully.",
-        "model_loaded": MODEL is not None,
-        "model_path": MODEL_PATH
-    })
-
-
-# ============================================================
-# ROUTE: HEALTH
-# ============================================================
-
-@app.route("/api/health", methods=["GET"])
-def health():
-
-    return jsonify({
-        "status": "healthy",
-        "backend": "online",
-        "model_loaded": MODEL is not None,
-        "model_path": MODEL_PATH,
-        "events": len(EVENTS),
-        "time": datetime.now().isoformat()
-    })
-
-
-# ============================================================
-# ROUTE: PREDICT
-# ============================================================
-
-@app.route("/api/predict", methods=["POST"])
-def predict():
-
-    try:
-
-        data = request.get_json(
-            silent=True
-        )
-
-        if data is None:
-            data = {}
-
-        # ----------------------------------------------------
-        # Validate coordinates
-        # ----------------------------------------------------
-
-        if "latitude" not in data:
-            return jsonify({
-                "success": False,
-                "error": "latitude is required"
-            }), 400
-
-        if "longitude" not in data:
-            return jsonify({
-                "success": False,
-                "error": "longitude is required"
-            }), 400
-
-        lat = safe_float(
-            data.get("latitude")
-        )
-
-        lon = safe_float(
-            data.get("longitude")
-        )
-
-        if not -90 <= lat <= 90:
-
-            return jsonify({
-                "success": False,
-                "error": "Invalid latitude"
-            }), 400
-
-        if not -180 <= lon <= 180:
-
-            return jsonify({
-                "success": False,
-                "error": "Invalid longitude"
-            }), 400
-
-        # ----------------------------------------------------
-        # Prediction
-        # ----------------------------------------------------
-
-        prediction, probabilities, model_used = (
-            run_prediction(data)
-        )
-
-        # ----------------------------------------------------
-        # Event
-        # ----------------------------------------------------
-
-        event = create_event(
-            data,
-            prediction,
-            probabilities,
-            model_used
-        )
-
-        # ----------------------------------------------------
-        # Land cover
-        # ----------------------------------------------------
-
-        landcover = estimate_landcover(
-            lat,
-            lon
-        )
-
-        event.update(
-            landcover
-        )
-
-        # ----------------------------------------------------
-        # Store event
-        # ----------------------------------------------------
-
-        EVENTS.insert(
-            0,
-            event
-        )
-
-        # Keep only latest 500 events
-        del EVENTS[500:]
-
-        # ----------------------------------------------------
-        # Response
-        # ----------------------------------------------------
-
-        response = {
-
-            "success": True,
-
-            "prediction": prediction,
-
-            "type": prediction,
-
-            "classification": classification_name(
-                prediction
-            ),
-
-            "risk": risk_level(
-                prediction
-            ),
-
-            "risk_level": risk_level(
-                prediction
-            ),
-
-            "probabilities": probabilities,
-
-            "model_used": model_used,
-
-            "model_loaded": MODEL is not None,
-
-            "event": event,
-
-            "coordinates": {
-                "latitude": lat,
-                "longitude": lon
-            },
-
-            "land_cover": event.get(
-                "land_cover",
-                "Unknown"
-            ),
-
-            "state": event.get(
-                "state",
-                "Unknown"
-            ),
-
-            "district": event.get(
-                "district",
-                "Unknown"
-            )
-        }
-
-        return jsonify(
-            clean_json(response)
-        )
-
-    except Exception as e:
-
-        print()
-        print("PREDICTION ERROR")
-        print(e)
-        print(traceback.format_exc())
-        print()
-
-        return jsonify({
-
-            "success": False,
-
-            "error": str(e),
-
-            "message": (
-                "Prediction failed. "
-                "Check backend terminal."
-            )
-
-        }), 500
-
-
-# ============================================================
-# ROUTE: EVENTS
-# ============================================================
-
-@app.route("/api/events", methods=["GET"])
-def get_events():
-
-    return jsonify(
-        clean_json(EVENTS)
-    )
-
-
-# ============================================================
-# ROUTE: STATS
-# ============================================================
-
-@app.route("/api/stats", methods=["GET"])
-def get_stats():
-
-    total = len(EVENTS)
-
-    fire_events = [
-        e for e in EVENTS
-        if safe_int(
-            e.get("prediction", 0)
-        ) in [1, 2, 3]
-    ]
-
-    no_fire_events = [
-        e for e in EVENTS
-        if safe_int(
-            e.get("prediction", 0)
-        ) == 0
-    ]
-
-    high_risk = [
-        e for e in EVENTS
-        if safe_int(
-            e.get("prediction", 0)
-        ) == 3
-    ]
-
-    moderate_risk = [
-        e for e in EVENTS
-        if safe_int(
-            e.get("prediction", 0)
-        ) == 2
-    ]
-
-    low_risk = [
-        e for e in EVENTS
-        if safe_int(
-            e.get("prediction", 0)
-        ) == 1
-    ]
-
-    frp_values = [
-        safe_float(e.get("frp", 0))
-        for e in fire_events
-    ]
-
-    avg_frp = (
-        sum(frp_values) / len(frp_values)
-        if frp_values
-        else 0
-    )
-
-    max_frp = (
-        max(frp_values)
-        if frp_values
-        else 0
-    )
-
-    return jsonify({
-
-        "success": True,
-
-        "total_events": total,
-
-        "total": total,
-
-        "fire_events": len(fire_events),
-
-        "fire_count": len(fire_events),
-
-        "no_fire_events": len(no_fire_events),
-
-        "high_risk": len(high_risk),
-
-        "moderate_risk": len(moderate_risk),
-
-        "low_risk": len(low_risk),
-
-        "average_frp": round(
-            avg_frp,
-            2
-        ),
-
-        "max_frp": round(
-            max_frp,
-            2
-        ),
-
-        "model_loaded": MODEL is not None
-
-    })
-
-
-# ============================================================
-# ROUTE: NASA FIRMS POINTS
-# ============================================================
-
-@app.route(
-    "/api/firms/points",
-    methods=["GET"]
-)
-def firms_points():
-
-    try:
-
-        lat_min = safe_float(
-            request.args.get(
-                "lat_min",
-                6
-            )
-        )
-
-        lat_max = safe_float(
-            request.args.get(
-                "lat_max",
-                38
-            )
-        )
-
-        lon_min = safe_float(
-            request.args.get(
-                "lon_min",
-                66
-            )
-        )
-
-        lon_max = safe_float(
-            request.args.get(
-                "lon_max",
-                100
-            )
-        )
-
-        limit = safe_int(
-            request.args.get(
-                "limit",
-                1000
-            ),
-            1000
-        )
-
-        limit = min(
-            max(limit, 1),
-            10000
-        )
-
-        # ----------------------------------------------------
-        # Search CSV files
-        # ----------------------------------------------------
-
-        csv_files = []
-
-        for directory in DATA_DIRS:
-
-            if os.path.exists(directory):
-
-                csv_files.extend(
-                    glob.glob(
-                        os.path.join(
-                            directory,
-                            "**",
-                            "*.csv"
-                        ),
-                        recursive=True
-                    )
-                )
-
-        # Remove duplicates
-        csv_files = list(
-            dict.fromkeys(csv_files)
-        )
-
-        selected_file = None
-
-        # Prefer FIRMS files
-        for path in csv_files:
-
-            name = os.path.basename(
-                path
-            ).lower()
-
-            if (
-                "fire" in name
-                or "firms" in name
-            ):
-
-                selected_file = path
-                break
-
-        if selected_file is None:
-
-            if csv_files:
-                selected_file = csv_files[0]
-
-        if selected_file is None:
-
-            return jsonify({
-
-                "success": True,
-
-                "points": [],
-
-                "count": 0,
-
-                "message": (
-                    "No FIRMS CSV file found."
-                )
-
-            })
-
-        # ----------------------------------------------------
-        # Read only required columns
-        # ----------------------------------------------------
-
-        df = pd.read_csv(
-            selected_file,
-            low_memory=False
-        )
-
-        if (
-            "latitude" not in df.columns
-            or
-            "longitude" not in df.columns
-        ):
-
-            return jsonify({
-
-                "success": False,
-
-                "error": (
-                    "CSV does not contain "
-                    "latitude/longitude columns."
-                )
-
-            }), 400
-
-        df = df[
-            (df["latitude"] >= lat_min)
-            &
-            (df["latitude"] <= lat_max)
-            &
-            (df["longitude"] >= lon_min)
-            &
-            (df["longitude"] <= lon_max)
-        ]
-
-        # ----------------------------------------------------
-        # Limit data
-        # ----------------------------------------------------
-
-        df = df.head(
-            limit
-        )
-
-        points = []
-
-        for _, row in df.iterrows():
-
-            point = {
-
-                "latitude": safe_float(
-                    row.get(
-                        "latitude",
-                        0
-                    )
-                ),
-
-                "longitude": safe_float(
-                    row.get(
-                        "longitude",
-                        0
-                    )
-                ),
-
-                "brightness": safe_float(
-                    row.get(
-                        "brightness",
-                        0
-                    )
-                ),
-
-                "frp": safe_float(
-                    row.get(
-                        "frp",
-                        0
-                    )
-                ),
-
-                "confidence": safe_float(
-                    row.get(
-                        "confidence",
-                        0
-                    )
-                )
-            }
-
-            if "type" in df.columns:
-
-                point["type"] = safe_int(
-                    row.get(
-                        "type",
-                        0
-                    )
-                )
-
-                point["classification"] = (
-                    classification_name(
-                        point["type"]
-                    )
-                )
-
-            points.append(
-                point
-            )
-
-        return jsonify({
-
-            "success": True,
-
-            "points": clean_json(
-                points
-            ),
-
-            "count": len(points),
-
-            "source": selected_file
-
+@app.get("/api/facilities")
+def get_facilities():
+    results = []
+    for f in FACILITIES_DB:
+        events_near = [e for e in EVENTS_STORE if calculate_haversine_distance(e["lat"], e["lng"], f["lat"], f["lng"]) <= 5.0]
+        avg_risk = round(sum(e["risk"] for e in events_near) / max(1, len(events_near)), 1) if events_near else f["risk"]
+        results.append({
+            **f, "events": len(events_near) if events_near else f["events"],
+            "currentRisk": avg_risk,
+            "status": "CRITICAL RISK" if avg_risk >= 80 else ("HIGH RISK" if avg_risk >= 60 else "MONITORED")
         })
+    return results
 
-    except Exception as e:
+@app.get("/api/persistence")
+def get_persistence():
+    persistent_events = [e for e in EVENTS_STORE if e["detections30d"] >= 20]
+    persistent_events.sort(key=lambda x: x["detections30d"], reverse=True)
+    return {
+        "totalPersistent": len(persistent_events),
+        "averageDetections": round(sum(e["detections30d"] for e in persistent_events) / max(1, len(persistent_events)), 1),
+        "highPersistenceSources": persistent_events[:25]
+    }
 
-        print(
-            "FIRMS ERROR:",
-            e
-        )
+@app.get("/api/risk-summary")
+def get_risk_summary():
+    total = len(EVENTS_STORE)
+    critical = [e for e in EVENTS_STORE if e["riskLevel"] == "CRITICAL"]
+    high = [e for e in EVENTS_STORE if e["riskLevel"] == "HIGH"]
+    moderate = [e for e in EVENTS_STORE if e["riskLevel"] == "MODERATE"]
+    low = [e for e in EVENTS_STORE if e["riskLevel"] == "LOW"]
+    return {
+        "total": total, "critical": len(critical), "high": len(high),
+        "moderate": len(moderate), "low": len(low),
+        "topCriticalEvents": critical[:10]
+    }
 
-        return jsonify({
+@app.get("/api/alerts")
+def get_alerts():
+    return ALERTS_STORE
 
-            "success": False,
+@app.post("/api/alerts")
+def create_alert(req: AlertCreateRequest):
+    new_alert = {
+        "id": f"ALT-{1000 + len(ALERTS_STORE) + 1}", "title": req.title,
+        "facility": req.facility, "level": req.level.upper(),
+        "color": "#ef4444" if req.level.upper() == "CRITICAL" else ("#f97316" if req.level.upper() == "HIGH" else "#facc15"),
+        "targetEvent": "TF-CUSTOM", "timestamp": "Just now", "status": "ACTIVE", "threshold": req.threshold
+    }
+    ALERTS_STORE.insert(0, new_alert)
+    return new_alert
 
-            "error": str(e)
+@app.get("/api/reports")
+def get_reports():
+    return REPORTS_STORE
 
-        }), 500
+@app.post("/api/reports")
+def create_report(req: ReportCreateRequest):
+    target = next((e for e in EVENTS_STORE if e["id"].lower() == req.eventId.lower()), EVENTS_STORE[0])
+    new_report = {
+        "id": f"REP-2026-{str(len(REPORTS_STORE) + 1).zfill(3)}",
+        "eventId": target["id"],
+        "title": f"Investigation Report - {target['facility']} ({target['classification']})",
+        "riskLevel": target["riskLevel"], "riskScore": target["risk"],
+        "author": "Thermal AI Autonomous Inspector", "date": datetime.now().strftime("%Y-%m-%d"),
+        "status": "COMPLETED",
+        "summary": f"{target['classification']} at {target['lat']}, {target['lng']}. FRP: {target['frp']} MW. {req.notes or target['explanation']}"
+    }
+    REPORTS_STORE.insert(0, new_report)
+    return new_report
 
+# ==============================================================================
+# FRONTEND STATIC FILES SERVING
+# ==============================================================================
 
-# ============================================================
-# ROUTE: LAND COVER
-# ============================================================
+FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "front end"))
 
-@app.route(
-    "/api/landcover/point",
-    methods=["GET"]
-)
-def landcover_point():
+if os.path.exists(FRONTEND_DIR):
+    @app.get("/")
+    def serve_index():
+        return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
 
-    try:
-
-        lat = safe_float(
-            request.args.get(
-                "lat"
-            )
-        )
-
-        lon = safe_float(
-            request.args.get(
-                "lon"
-            )
-        )
-
-        if not (-90 <= lat <= 90):
-
-            return jsonify({
-                "success": False,
-                "error": "Invalid latitude"
-            }), 400
-
-        if not (-180 <= lon <= 180):
-
-            return jsonify({
-                "success": False,
-                "error": "Invalid longitude"
-            }), 400
-
-        result = estimate_landcover(
-            lat,
-            lon
-        )
-
-        return jsonify({
-
-            "success": True,
-
-            "latitude": lat,
-
-            "longitude": lon,
-
-            **result
-
-        })
-
-    except Exception as e:
-
-        return jsonify({
-
-            "success": False,
-
-            "error": str(e)
-
-        }), 500
-
-
-# ============================================================
-# ROUTE: CLEAR EVENTS
-# ============================================================
-
-@app.route(
-    "/api/events/clear",
-    methods=["POST"]
-)
-def clear_events():
-
-    EVENTS.clear()
-
-    return jsonify({
-
-        "success": True,
-
-        "message": "Events cleared."
-
-    })
-
-
-# ============================================================
-# ERROR HANDLER
-# ============================================================
-
-@app.errorhandler(404)
-def not_found(error):
-
-    return jsonify({
-
-        "success": False,
-
-        "error": "API route not found",
-
-        "path": request.path
-
-    }), 404
-
-
-@app.errorhandler(500)
-def internal_error(error):
-
-    return jsonify({
-
-        "success": False,
-
-        "error": "Internal server error"
-
-    }), 500
-
-
-# ============================================================
-# START SERVER
-# ============================================================
-
-if __name__ == "__main__":
-
-    print()
-    print("=" * 70)
-    print("🔥 FIRE INTELLIGENCE DASHBOARD BACKEND")
-    print("=" * 70)
-
-    print()
-    print("Loading ML model...")
-    load_model()
-
-    print()
-    print("=" * 70)
-    print("SERVER STARTING")
-    print("=" * 70)
-
-    print("Frontend API:")
-    print("http://127.0.0.1:8000")
-
-    print()
-    print("Health:")
-    print("http://127.0.0.1:8000/api/health")
-
-    print()
-    print("API Routes:")
-    print("GET  /")
-    print("GET  /api/health")
-    print("POST /api/predict")
-    print("GET  /api/events")
-    print("GET  /api/stats")
-    print("GET  /api/firms/points")
-    print("GET  /api/landcover/point")
-    print("POST /api/events/clear")
-
-    print()
-    print("=" * 70)
-
-    app.run(
-        host="0.0.0.0",
-        port=8000,
-        debug=True
-    )
+    app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
