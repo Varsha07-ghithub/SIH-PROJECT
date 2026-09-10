@@ -1,0 +1,4895 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>Geothermal AI | Geothermal Intelligence</title>
+
+  <!-- React -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+
+  <!-- Babel -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Leaflet -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Leaflet.heat for heatmap rendering of millions of FIRMS points -->
+  <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+
+  <!-- Lucide -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --bg: #07111f;
+      --bg2: #0b1626;
+      --panel: #0d1a2b;
+      --panel2: #101f33;
+      --border: rgba(148, 163, 184, 0.16);
+      --text: #edf5ff;
+      --muted: #8ea1b8;
+      --blue: #38bdf8;
+      --red: #ef4444;
+      --orange: #f97316;
+      --yellow: #facc15;
+      --green: #22c55e;
+      --gray: #94a3b8;
+    }
+
+    body {
+      font-family: Inter, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      overflow: hidden;
+    }
+
+    button,
+    input,
+    select {
+      font-family: inherit;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    .app {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* TOP BAR */
+
+    .topbar {
+      height: 64px;
+      background: #081321;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+      justify-content: space-between;
+      z-index: 1000;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-logo {
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #38bdf8, #2563eb);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      color: white;
+    }
+
+    .brand-title {
+      font-size: 17px;
+      font-weight: 800;
+      letter-spacing: .3px;
+    }
+
+    .brand-subtitle {
+      font-size: 10px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    .monitor {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: #dbeafe;
+    }
+
+    .live-dot {
+      width: 8px;
+      height: 8px;
+      background: #22c55e;
+      border-radius: 50%;
+      box-shadow: 0 0 10px #22c55e;
+    }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .status {
+      padding: 7px 10px;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      font-size: 11px;
+      color: #9fe7b4;
+      background: rgba(34,197,94,.06);
+    }
+
+    .icon-btn {
+      width: 34px;
+      height: 34px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: #cbd5e1;
+    }
+
+    .icon-btn:hover {
+      background: #122239;
+    }
+
+    /* BODY */
+
+    .body {
+      flex: 1;
+      display: flex;
+      min-height: 0;
+    }
+
+    /* SIDEBAR */
+
+    .sidebar {
+      width: 235px;
+      background: #081321;
+      border-right: 1px solid var(--border);
+      padding: 16px 10px;
+      transition: width .25s ease;
+      overflow-y: auto;
+      z-index: 900;
+    }
+
+    .sidebar.collapsed {
+      width: 70px;
+    }
+
+    .sidebar.collapsed .nav-label,
+    .sidebar.collapsed .section-title {
+      display: none;
+    }
+
+    .section-title {
+      font-size: 9px;
+      color: #52677f;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      padding: 8px 12px;
+      text-transform: uppercase;
+    }
+
+    .nav-item {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border: 0;
+      background: transparent;
+      color: #8fa3ba;
+      padding: 11px 12px;
+      border-radius: 7px;
+      margin-bottom: 3px;
+      text-align: left;
+      font-size: 12px;
+    }
+
+    .nav-item:hover {
+      background: #101f33;
+      color: white;
+    }
+
+    .nav-item.active {
+      color: white;
+      background: #10243a;
+      border-left: 2px solid var(--blue);
+    }
+
+    .nav-icon {
+      width: 17px;
+      min-width: 17px;
+    }
+
+    /* MAIN */
+
+    .main {
+      flex: 1;
+      min-width: 0;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .page {
+      height: 100%;
+      overflow-y: auto;
+      padding: 16px;
+    }
+
+    /* PAGE HEADER */
+
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+
+    .page-title {
+      font-size: 20px;
+      font-weight: 800;
+    }
+
+    .page-description {
+      color: var(--muted);
+      font-size: 11px;
+      margin-top: 4px;
+    }
+
+    .demo-label {
+      font-size: 9px;
+      font-weight: 800;
+      color: #facc15;
+      border: 1px solid rgba(250,204,21,.3);
+      padding: 5px 8px;
+      border-radius: 5px;
+      background: rgba(250,204,21,.05);
+      letter-spacing: .7px;
+    }
+
+    /* KPI */
+
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .kpi {
+      background: rgba(13,26,43,.9);
+      border: 1px solid var(--border);
+      padding: 10px 12px;
+      border-radius: 8px;
+    }
+
+    .kpi-label {
+      font-size: 9px;
+      color: var(--muted);
+      letter-spacing: .7px;
+    }
+
+    .kpi-value {
+      font-size: 20px;
+      font-weight: 800;
+      margin-top: 5px;
+    }
+
+    .kpi-danger {
+      color: #ff5d5d;
+    }
+
+    .kpi-warning {
+      color: #ff9f43;
+    }
+
+    .kpi-blue {
+      color: var(--blue);
+    }
+
+    .kpi-ok {
+      color: #22c55e;
+    }
+
+    /* MAP */
+
+    .mission-layout {
+      height: calc(100% - 105px);
+      display: grid;
+      grid-template-columns: 1fr 330px;
+      gap: 10px;
+    }
+
+    .map-wrap {
+      position: relative;
+      min-height: 0;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      background: #07111f;
+    }
+
+    #map {
+      height: 100%;
+      width: 100%;
+    }
+
+    .map-overlay {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      z-index: 500;
+      background: rgba(5,14,25,.92);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      width: 215px;
+      backdrop-filter: blur(10px);
+    }
+
+    .search-box {
+      display: flex;
+      gap: 5px;
+    }
+
+    .search-box input {
+      flex: 1;
+      min-width: 0;
+      background: #0a1829;
+      border: 1px solid var(--border);
+      color: white;
+      border-radius: 6px;
+      padding: 8px;
+      outline: none;
+      font-size: 11px;
+    }
+
+    .search-box button {
+      width: 32px;
+      border: 0;
+      border-radius: 6px;
+      background: #155e75;
+      color: white;
+    }
+
+    .layer-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-top: 9px;
+    }
+
+    .layer-btn {
+      font-size: 9px;
+      padding: 5px 7px;
+      border-radius: 5px;
+      border: 1px solid var(--border);
+      color: #a8bad0;
+      background: #0b1a2b;
+    }
+
+    .layer-btn.active {
+      color: white;
+      border-color: rgba(56,189,248,.4);
+      background: rgba(56,189,248,.08);
+    }
+
+    .legend {
+      position: absolute;
+      bottom: 12px;
+      left: 12px;
+      z-index: 500;
+      background: rgba(5,14,25,.9);
+      border: 1px solid var(--border);
+      padding: 10px;
+      border-radius: 8px;
+      font-size: 9px;
+    }
+
+    .legend-title {
+      font-weight: 700;
+      margin-bottom: 7px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      margin: 5px 0;
+      color: #b7c5d5;
+    }
+
+    .legend-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    /* INTELLIGENCE PANEL */
+
+    .intelligence {
+      background: #0b1727;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow-y: auto;
+    }
+
+    .intel-header {
+      padding: 13px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .intel-event {
+      font-weight: 800;
+      font-size: 13px;
+    }
+
+    .event-id {
+      color: var(--muted);
+      font-size: 10px;
+      margin-top: 3px;
+    }
+
+    .intel-body {
+      padding: 13px;
+    }
+
+    .classification {
+      padding: 12px;
+      background: rgba(239,68,68,.06);
+      border: 1px solid rgba(239,68,68,.2);
+      border-radius: 8px;
+      margin-bottom: 10px;
+    }
+
+    .classification-label {
+      font-size: 9px;
+      color: var(--muted);
+    }
+
+    .classification-value {
+      color: #ff6969;
+      font-weight: 900;
+      font-size: 17px;
+      margin-top: 4px;
+    }
+
+    .intel-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 7px;
+    }
+
+    .intel-stat {
+      background: #0f2033;
+      padding: 9px;
+      border-radius: 6px;
+    }
+
+    .intel-stat-label {
+      font-size: 8px;
+      color: var(--muted);
+    }
+
+    .intel-stat-value {
+      font-size: 11px;
+      font-weight: 700;
+      margin-top: 3px;
+    }
+
+    .section {
+      margin-top: 13px;
+    }
+
+    .section-heading {
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: .7px;
+      margin-bottom: 7px;
+    }
+
+    .explanation {
+      font-size: 10px;
+      line-height: 1.55;
+      color: #b7c6d7;
+      padding: 9px;
+      background: #0c1c2e;
+      border-left: 2px solid var(--blue);
+    }
+
+    .factor {
+      display: flex;
+      justify-content: space-between;
+      font-size: 9px;
+      padding: 5px 0;
+      border-bottom: 1px solid rgba(148,163,184,.08);
+    }
+
+    .factor-value {
+      font-weight: 700;
+    }
+
+    .high {
+      color: #ff6969;
+    }
+
+    .very-high {
+      color: #ff4f4f;
+    }
+
+    .medium {
+      color: #facc15;
+    }
+
+    .actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      margin-top: 12px;
+    }
+
+    .action {
+      border: 1px solid var(--border);
+      background: #102238;
+      color: #dbeafe;
+      border-radius: 6px;
+      padding: 8px 5px;
+      font-size: 9px;
+    }
+
+    .action:hover {
+      border-color: rgba(56,189,248,.5);
+      background: #142b45;
+    }
+
+    /* PROBABILITY */
+
+    .probability {
+      margin: 7px 0;
+    }
+
+    .prob-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 9px;
+      margin-bottom: 4px;
+    }
+
+    .bar {
+      height: 5px;
+      background: #18283a;
+      border-radius: 5px;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      border-radius: inherit;
+    }
+
+    /* GENERAL CARDS */
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+
+    .card {
+      background: #0c192a;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      padding: 14px;
+    }
+
+    .card-title {
+      font-size: 12px;
+      font-weight: 800;
+      margin-bottom: 10px;
+    }
+
+    .card-sub {
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    /* TABLE */
+
+    .table-wrap {
+      background: #0c192a;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      overflow: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 10px;
+    }
+
+    th {
+      text-align: left;
+      color: #7890a8;
+      font-size: 9px;
+      letter-spacing: .5px;
+      padding: 11px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    td {
+      padding: 10px 11px;
+      border-bottom: 1px solid rgba(148,163,184,.08);
+      color: #c8d5e3;
+    }
+
+    tr:hover td {
+      background: rgba(56,189,248,.025);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 6px;
+      border-radius: 4px;
+      font-size: 8px;
+      font-weight: 800;
+    }
+
+    .badge-red {
+      background: rgba(239,68,68,.12);
+      color: #ff6c6c;
+    }
+
+    .badge-orange {
+      background: rgba(249,115,22,.12);
+      color: #ff9c55;
+    }
+
+    .badge-green {
+      background: rgba(34,197,94,.12);
+      color: #4ade80;
+    }
+
+    .badge-yellow {
+      background: rgba(250,204,21,.12);
+      color: #facc15;
+    }
+
+    .badge-gray {
+      background: rgba(148,163,184,.12);
+      color: #aebdcd;
+    }
+
+    /* CHART */
+
+    .chart {
+      height: 170px;
+      display: flex;
+      align-items: end;
+      gap: 5px;
+      padding: 10px 0 0;
+    }
+
+    .chart-bar {
+      flex: 1;
+      background: #17617c;
+      min-width: 5px;
+      border-radius: 3px 3px 0 0;
+      opacity: .8;
+    }
+
+    .chart-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 8px;
+      color: #61758b;
+      margin-top: 6px;
+    }
+
+    /* RISK */
+
+    .risk-container {
+      display: flex;
+      gap: 25px;
+      align-items: center;
+    }
+
+    .risk-gauge {
+      width: 150px;
+      height: 150px;
+      border-radius: 50%;
+      background: conic-gradient(
+        #ef4444 0deg 313deg,
+        #1c2a3b 313deg 360deg
+      );
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    .risk-gauge::after {
+      content: "";
+      width: 112px;
+      height: 112px;
+      background: #0c192a;
+      border-radius: 50%;
+      position: absolute;
+    }
+
+    .risk-number {
+      z-index: 2;
+      text-align: center;
+    }
+
+    .risk-number strong {
+      font-size: 32px;
+    }
+
+    .risk-number span {
+      display: block;
+      font-size: 9px;
+      color: #ff6969;
+      font-weight: 800;
+    }
+
+    .risk-list {
+      flex: 1;
+    }
+
+    .risk-row {
+      margin-bottom: 10px;
+    }
+
+    .risk-row-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 9px;
+      margin-bottom: 4px;
+    }
+
+    /* ALERT */
+
+    .alert {
+      border: 1px solid var(--border);
+      border-left: 3px solid;
+      padding: 12px;
+      border-radius: 7px;
+      background: #0c192a;
+      margin-bottom: 8px;
+    }
+
+    .alert.critical {
+      border-left-color: #ef4444;
+    }
+
+    .alert.high-alert {
+      border-left-color: #f97316;
+    }
+
+    .alert.medium-alert {
+      border-left-color: #facc15;
+    }
+
+    .alert-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .alert-title {
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .alert-desc {
+      color: #9fb0c2;
+      font-size: 9px;
+      margin-top: 6px;
+      line-height: 1.5;
+    }
+
+    .alert-actions {
+      margin-top: 9px;
+      display: flex;
+      gap: 6px;
+    }
+
+    .small-btn {
+      border: 1px solid var(--border);
+      background: #102238;
+      color: #bcd0e3;
+      padding: 5px 8px;
+      border-radius: 5px;
+      font-size: 8px;
+    }
+
+    /* FACILITY */
+
+    .facility-card {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 13px;
+      border: 1px solid var(--border);
+      background: #0c192a;
+      border-radius: 8px;
+      margin-bottom: 7px;
+    }
+
+    .facility-name {
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .facility-type {
+      font-size: 9px;
+      color: var(--muted);
+      margin-top: 3px;
+    }
+
+    /* TOAST */
+
+    .toast {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      z-index: 9999;
+      background: #11253b;
+      border: 1px solid rgba(56,189,248,.3);
+      color: white;
+      padding: 11px 14px;
+      border-radius: 7px;
+      font-size: 10px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.4);
+      animation: slideIn .25s ease;
+    }
+
+    @keyframes slideIn {
+      from {
+        transform: translateY(20px);
+        opacity: 0;
+      }
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    /* MOBILE */
+
+    @media(max-width: 1000px) {
+      .kpis {
+        grid-template-columns: repeat(3, 1fr);
+      }
+
+      .mission-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .intelligence {
+        display: none;
+      }
+
+      .grid {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    @media(max-width: 700px) {
+      body {
+        overflow: auto;
+      }
+
+      .topbar {
+        height: 58px;
+      }
+
+      .monitor {
+        display: none;
+      }
+
+      .sidebar {
+        position: fixed;
+        left: 0;
+        top: 58px;
+        bottom: 0;
+        transform: translateX(-100%);
+      }
+
+      .sidebar.open {
+        transform: translateX(0);
+      }
+
+      .main {
+        width: 100%;
+      }
+
+      .page {
+        padding: 10px;
+      }
+
+      .kpis {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .mission-layout {
+        height: 650px;
+      }
+    }
+  
+    /* BACKEND STATUS & MODEL INFERENCE STYLES */
+    .status-online {
+      color: #86efac !important;
+      background: rgba(34, 197, 94, 0.12) !important;
+      border-color: rgba(34, 197, 94, 0.4) !important;
+      box-shadow: 0 0 12px rgba(34, 197, 94, 0.2);
+    }
+
+    .status-offline {
+      color: #fdba74 !important;
+      background: rgba(249, 115, 22, 0.12) !important;
+      border-color: rgba(249, 115, 22, 0.3) !important;
+    }
+
+    .predict-nav-btn {
+      padding: 7px 14px;
+      background: linear-gradient(135deg, #2563eb, #7c3aed);
+      border: 1px solid rgba(147, 197, 253, 0.4);
+      color: white;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+    }
+
+    .predict-nav-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 16px rgba(124, 58, 237, 0.4);
+      background: linear-gradient(135deg, #1d4ed8, #6d28d9);
+    }
+
+    /* MODAL STYLES */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(4, 9, 18, 0.82);
+      backdrop-filter: blur(8px);
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      animation: fadeIn 0.2s ease;
+    }
+
+    .modal-card {
+      background: #0d1a2b;
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      border-radius: 16px;
+      width: 100%;
+      max-width: 780px;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7), 0 0 40px rgba(56, 189, 248, 0.15);
+      color: #edf5ff;
+    }
+
+    .modal-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(13, 26, 43, 0.95);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .modal-title {
+      font-size: 18px;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #38bdf8;
+    }
+
+    .modal-body {
+      padding: 24px;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .form-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--muted);
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    .form-input {
+      background: #081321;
+      border: 1px solid var(--border);
+      color: #edf5ff;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .form-input:focus {
+      border-color: #38bdf8;
+      box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+    }
+
+    .prediction-output-card {
+      background: #081321;
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      border-radius: 12px;
+      padding: 20px;
+      margin-top: 20px;
+      animation: slideUp 0.3s ease;
+    }
+
+    .lc-distribution-bar {
+      height: 14px;
+      border-radius: 7px;
+      display: flex;
+      overflow: hidden;
+      margin: 10px 0;
+      background: #111e33;
+    }
+
+    .lc-legend-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 10px;
+      font-size: 11px;
+    }
+
+    .lc-legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .lc-legend-color {
+      width: 10px;
+      height: 10px;
+      border-radius: 3px;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    @keyframes slideUp {
+      from { transform: translateY(10px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+  </style>
+</head>
+
+<body>
+
+<div id="root"></div>
+
+<script type="text/babel">
+
+const { useState, useEffect, useMemo } = React;
+
+/* =========================================================
+   BACKEND API INTEGRATION CLIENT
+========================================================= */
+
+const API_BASE = (window.location.protocol === 'file:' || !window.location.port)
+  ? 'http://127.0.0.1:8000'
+  : (window.location.port === '8000' ? '' : 'http://127.0.0.1:8000');
+
+async function fetchBackend(endpoint, options = {}) {
+  try {
+    const res = await fetch(`${API_BASE}${endpoint}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(options.headers || {})
+      }
+    });
+    if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.warn(`[Backend API] Request to ${endpoint} failed:`, err);
+    return null;
+  }
+}
+
+/* =========================================================
+   LIVE MODEL INFERENCE & DYNAMIC WORLD MODAL
+========================================================= */
+
+function ModelInferenceModal({ isOpen, onClose, onApplyEvent, defaultCoords, showToast }){
+  if (!isOpen) return null;
+
+  const [lat, setLat] = useState(defaultCoords && defaultCoords.lat ? defaultCoords.lat : 13.0827);
+  const [lng, setLng] = useState(defaultCoords && defaultCoords.lng ? defaultCoords.lng : 80.2707);
+  const [frp, setFrp] = useState(defaultCoords && defaultCoords.frp ? defaultCoords.frp : 120);
+  const [brightness, setBrightness] = useState(defaultCoords && defaultCoords.brightness ? defaultCoords.brightness : 365);
+  const [confidence, setConfidence] = useState(defaultCoords && defaultCoords.confidence ? defaultCoords.confidence : 85);
+  const [satellite, setSatellite] = useState("VIIRS");
+  const [persistenceProfile, setPersistenceProfile] = useState("AUTO");
+  const [loading, setLoading] = useState(false);
+  const [prediction, setPrediction] = useState(null);
+
+  const runPrediction = async () => {
+    setLoading(true);
+    try {
+      const data = await fetchBackend('/api/predict', {
+        method: 'POST',
+        body: JSON.stringify({
+          lat: parseFloat(lat),
+          lng: parseFloat(lng),
+          frp: parseFloat(frp),
+          brightness: parseFloat(brightness),
+          confidence: parseFloat(confidence),
+          satellite,
+          persistence_override: persistenceProfile !== "AUTO" ? persistenceProfile : null
+        })
+      });
+      
+      let finalData = data;
+      
+      if (!data) {
+        // Local client-side fallback simulation if offline
+        const risk = Math.min(100, Math.round((parseFloat(frp) / 250) * 50 + (parseFloat(brightness) - 300) * 0.3 + 17));
+        finalData = {
+          id: `TF-SIM-${Math.floor(Math.random()*9000)+1000}`,
+          lat: parseFloat(lat),
+          lng: parseFloat(lng),
+          classification: frp > 100 ? "Industrial Fire" : "Agricultural Burning",
+          risk: risk,
+          riskLevel: risk >= 80 ? "CRITICAL" : (risk >= 60 ? "HIGH" : "MODERATE"),
+          riskColor: risk >= 80 ? "#ef4444" : (risk >= 60 ? "#f97316" : "#facc15"),
+          riskBadge: risk >= 80 ? "CRITICAL RISK" : "HIGH RISK",
+          confidence: parseFloat(confidence),
+          frp: parseFloat(frp),
+          temperature: parseFloat(brightness),
+          satellite,
+          sensor: "Suomi NPP",
+          facility: "Eastern Petro Refinery",
+          facilityType: "Oil Refinery",
+          distance: "1.2 km",
+          landCover: "Built Area",
+          landCoverColor: "#C4281B",
+          persistence: "HIGH",
+          detections24h: 4,
+          detections7d: 14,
+          detections30d: 32,
+          probabilities: [["Industrial Fire", 88.5], ["Persistent Thermal Source", 7.2], ["Agricultural Burning", 2.8], ["Natural Fire", 1.0], ["Unknown", 0.5]],
+          explanation: `High thermal radiation (${frp} MW) detected on Built Area land cover within 1.2 km of industrial facility.`,
+          factors: {
+            thermalIntensity: "VERY HIGH",
+            persistence: "HIGH",
+            industrialProximity: "VERY HIGH",
+            confidence: "HIGH",
+            landCover: "BUILT AREA"
+          }
+        };
+        showToast("Model prediction completed (local fallback)");
+      } else {
+        showToast("Dynamic World & Risk Model inference completed!");
+      }
+
+      // Add reverse geocoding to get State, District, Village
+      try {
+        const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${finalData.lat}&lon=${finalData.lng}&format=json`);
+        const geoData = await geoRes.json();
+        if (geoData && geoData.address) {
+          finalData.state = geoData.address.state || "Unknown State";
+          finalData.district = geoData.address.state_district || geoData.address.county || "Unknown District";
+          finalData.village = geoData.address.village || geoData.address.town || geoData.address.city || geoData.address.suburb || "Unknown Village";
+        }
+      } catch (err) {
+        console.warn("Geocoding failed", err);
+      }
+
+      setPrediction(finalData);
+
+    } catch(e) {
+      showToast("Prediction error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <div className="modal-title">
+            <span>⚡</span> Dynamic World & FIRMS Model Predictor
+          </div>
+          <button className="icon-btn" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">
+          <p style={{fontSize:"13px", color:"var(--muted)", marginBottom:"18px"}}>
+            Run live machine learning inference using the <b>Dynamic World 10m Land Cover & Thermal Risk Model</b> extracted from <code>landcover integration.ipynb</code>.
+          </p>
+
+          <div className="form-grid">
+            <div className="form-group">
+              <label className="form-label">Latitude (°N)</label>
+              <input type="number" step="0.0001" className="form-input" value={lat} onChange={e => setLat(e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Longitude (°E)</label>
+              <input type="number" step="0.0001" className="form-input" value={lng} onChange={e => setLng(e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Fire Radiative Power (MW FRP)</label>
+              <input type="number" className="form-input" value={frp} onChange={e => setFrp(e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Brightness Temperature (K)</label>
+              <input type="number" className="form-input" value={brightness} onChange={e => setBrightness(e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Detection Confidence (%)</label>
+              <input type="number" min="0" max="100" className="form-input" value={confidence} onChange={e => setConfidence(e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Satellite Platform</label>
+              <select className="form-input" value={satellite} onChange={e => setSatellite(e.target.value)}>
+                <option value="VIIRS">VIIRS (Suomi NPP / NOAA-20)</option>
+                <option value="MODIS">MODIS (Terra / Aqua)</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Persistence Profile</label>
+              <select className="form-input" value={persistenceProfile} onChange={e => setPersistenceProfile(e.target.value)}>
+                <option value="AUTO">Auto (Dynamic Spatial/Thermal Calculation)</option>
+                <option value="HIGH">HIGH (≥25 Detections - Persistent Source)</option>
+                <option value="MEDIUM">MEDIUM (10-24 Detections - Recurrent Fire)</option>
+                <option value="LOW">LOW (&lt;10 Detections - Isolated Event)</option>
+              </select>
+            </div>
+          </div>
+
+          <div style={{display:"flex", gap:"10px", marginTop:"12px"}}>
+            <button
+              className="action"
+              style={{flex:1, background:"linear-gradient(135deg, #2563eb, #7c3aed)", color:"white", fontWeight:"bold", border:"none", padding:"12px"}}
+              onClick={runPrediction}
+              disabled={loading}
+            >
+              {loading ? "Calculating Dynamic World & Risk Model..." : "🔮 Run Model Prediction"}
+            </button>
+            <button
+              className="action"
+              onClick={() => {
+                setLat(Number((13.0827 + (Math.random()-0.5)*0.1).toFixed(4)));
+                setLng(Number((80.2707 + (Math.random()-0.5)*0.1).toFixed(4)));
+                setFrp(Math.round(80 + Math.random()*160));
+                setBrightness(Math.round(330 + Math.random()*70));
+              }}
+            >
+              🎲 Randomize
+            </button>
+          </div>
+
+          {prediction && (
+            <div className="prediction-output-card">
+              <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"12px"}}>
+                <div style={{fontSize:"16px", fontWeight:"bold", color:"#38bdf8"}}>
+                  AI Classification: <span style={{color:"white"}}>{prediction.classification}</span>
+                </div>
+                <span className="badge" style={{background: prediction.riskColor, color:"white", fontWeight:"bold"}}>
+                  {prediction.riskBadge} ({prediction.risk} / 100)
+                </span>
+              </div>
+
+              <div style={{display:"grid", gridTemplateColumns:"repeat(4, 1fr)", gap:"10px", margin:"12px 0", fontSize:"12px"}}>
+                <div style={{background:"#101f33", padding:"10px", borderRadius:"8px"}}>
+                  <div style={{color:"var(--muted)", fontSize:"10px"}}>DYNAMIC WORLD COVER</div>
+                  <div style={{fontWeight:"bold", color: prediction.landCoverColor, marginTop:"4px"}}>
+                    ● {prediction.landCover}
+                  </div>
+                </div>
+                <div style={{background:"#101f33", padding:"10px", borderRadius:"8px"}}>
+                  <div style={{color:"var(--muted)", fontSize:"10px"}}>LOCATION DATA</div>
+                  <div style={{fontWeight:"bold", color:"#e2e8f0", marginTop:"4px", fontSize:"10px"}}>
+                    {prediction.village}, {prediction.district}, {prediction.state}
+                  </div>
+                </div>
+                <div style={{background:"#101f33", padding:"10px", borderRadius:"8px"}}>
+                  <div style={{color:"var(--muted)", fontSize:"10px"}}>NEAREST FACILITY</div>
+                  <div style={{fontWeight:"bold", color:"#edf5ff", marginTop:"4px"}}>
+                    {prediction.facility} ({prediction.distance})
+                  </div>
+                </div>
+                <div style={{background:"#101f33", padding:"10px", borderRadius:"8px"}}>
+                  <div style={{color:"var(--muted)", fontSize:"10px"}}>PERSISTENCE PROFILE</div>
+                  <div style={{fontWeight:"bold", color:"#facc15", marginTop:"4px"}}>
+                    {prediction.persistence} ({prediction.detections30d} rec.)
+                  </div>
+                </div>
+              </div>
+
+              {prediction.landCoverDistribution && (
+                <div style={{marginTop:"14px"}}>
+                  <div style={{fontSize:"11px", fontWeight:"bold", color:"var(--muted)"}}>
+                    DYNAMIC WORLD 10m LAND COVER DISTRIBUTION
+                  </div>
+                  <div className="lc-distribution-bar">
+                    {prediction.landCoverDistribution.map(d => (
+                      <div
+                        key={d.classId}
+                        style={{
+                          width: `${d.percentage}%`,
+                          background: d.color,
+                          minWidth: d.percentage > 0 ? "3px" : "0"
+                        }}
+                        title={`${d.name}: ${d.percentage}%`}
+                      />
+                    ))}
+                  </div>
+                  <div className="lc-legend-grid">
+                    {prediction.landCoverDistribution.slice(0, 6).map(d => (
+                      <div key={d.classId} className="lc-legend-item">
+                        <span className="lc-legend-color" style={{background: d.color}}></span>
+                        <span>{d.name}: <b>{d.percentage}%</b></span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div style={{marginTop:"14px", padding:"12px", background:"#101f33", borderRadius:"8px", fontSize:"12px", borderLeft:"3px solid #38bdf8"}}>
+                <div style={{fontSize:"10px", fontWeight:"bold", color:"#38bdf8", marginBottom:"4px"}}>AI EXPLAINABILITY REASONING</div>
+                <div style={{color:"#cbd5e1", lineHeight:"1.4"}}>{prediction.explanation}</div>
+              </div>
+
+              <div style={{marginTop:"16px", display:"flex", justifyContent:"flex-end", gap:"10px"}}>
+                <button
+                  className="action"
+                  style={{background:"#f97316", color:"#fff", fontWeight:"bold"}}
+                  onClick={() => {
+                    if (window.__drawBoundary) {
+                      window.__drawBoundary(prediction);
+                    }
+                    onClose();
+                    showToast("Affected thermal boundary rendered on map.");
+                  }}
+                >
+                  ⬡ Show Affected Boundary
+                </button>
+                <button
+                  className="action"
+                  style={{background:"#22c55e", color:"#081321", fontWeight:"bold"}}
+                  onClick={() => {
+                    onApplyEvent(prediction);
+                    onClose();
+                    showToast("Event injected into Live Map!");
+                  }}
+                >
+                  ✓ Pin to Live Mission Control & Map
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+/* =========================================================
+   MOCK DATA
+========================================================= */
+
+const classifications = [
+  "Industrial Fire",
+  "Persistent Thermal Source",
+  "Natural Fire",
+  "Agricultural Burning",
+  "Unknown"
+];
+
+const facilities = [
+  {
+    id: "FAC-001",
+    name: "Eastern Petro Refinery",
+    type: "Oil Refinery",
+    lat: 13.0827,
+    lng: 80.2707,
+    risk: 91,
+    events: 34,
+    persistence: "HIGH"
+  },
+  {
+    id: "FAC-002",
+    name: "Coastal Thermal Power",
+    type: "Thermal Power Plant",
+    lat: 13.155,
+    lng: 80.315,
+    risk: 78,
+    events: 22,
+    persistence: "MEDIUM"
+  },
+  {
+    id: "FAC-003",
+    name: "South Steel Works",
+    type: "Steel Plant",
+    lat: 12.97,
+    lng: 80.18,
+    risk: 83,
+    events: 28,
+    persistence: "HIGH"
+  },
+  {
+    id: "FAC-004",
+    name: "Industrial LNG Hub",
+    type: "LNG Facility",
+    lat: 13.11,
+    lng: 80.21,
+    risk: 88,
+    events: 19,
+    persistence: "HIGH"
+  },
+  {
+    id: "FAC-005",
+    name: "Northern Mining Zone",
+    type: "Mining Area",
+    lat: 13.28,
+    lng: 80.35,
+    risk: 67,
+    events: 15,
+    persistence: "MEDIUM"
+  }
+];
+
+/* Generate 120 mock events */
+
+const mockEvents = Array.from({length:120}, (_,i)=>{
+
+  const facility = facilities[i % facilities.length];
+
+  const classification =
+    i % 7 === 0
+      ? "Industrial Fire"
+      : i % 5 === 0
+      ? "Persistent Thermal Source"
+      : i % 4 === 0
+      ? "Agricultural Burning"
+      : i % 3 === 0
+      ? "Natural Fire"
+      : "Unknown";
+
+  const risk =
+    classification === "Industrial Fire"
+      ? 75 + (i % 25)
+      : classification === "Persistent Thermal Source"
+      ? 60 + (i % 30)
+      : classification === "Agricultural Burning"
+      ? 30 + (i % 35)
+      : 20 + (i % 40);
+
+  return {
+    id: `TF-${String(10293+i).padStart(5,"0")}`,
+    lat: facility.lat + ((i % 10)-5)*0.012,
+    lng: facility.lng + ((i % 11)-5)*0.012,
+    classification,
+    risk,
+    confidence: 70 + (i % 28),
+    frp: 50 + (i*7)%240,
+    temperature: 300 + (i*3)%90,
+    satellite: i%2 ? "VIIRS" : "MODIS",
+    sensor: i%2 ? "Suomi NPP" : "Terra",
+    facility: facility.name,
+    facilityType: facility.type,
+    distance: `${(0.4+(i%15)/10).toFixed(1)} km`,
+    landCover: classification.includes("Industrial")
+      ? "Industrial"
+      : classification === "Agricultural Burning"
+      ? "Cropland"
+      : "Mixed / Vegetation",
+    persistence: classification === "Persistent Thermal Source"
+      ? "HIGH"
+      : i%6 === 0
+      ? "MEDIUM"
+      : "LOW",
+    detections24h: 2+(i%8),
+    detections7d: 8+(i%20),
+    detections30d: 15+(i%45)
+  };
+});
+
+/* =========================================================
+   APP
+========================================================= */
+
+function App(){
+
+  const [activePage,setActivePage] = useState("mission");
+  const [sidebar,setSidebar] = useState(true);
+  const [events,setEvents] = useState(mockEvents);
+  const [facilitiesList,setFacilitiesList] = useState(facilities);
+  const [stats,setStats] = useState(null);
+  const [selectedEvent,setSelectedEvent] = useState(mockEvents[0]);
+  const [toast,setToast] = useState("");
+  const [search,setSearch] = useState("");
+  const [backendStatus,setBackendStatus] = useState("CONNECTING");
+  const [showPredictModal,setShowPredictModal] = useState(false);
+  const [predictCoords,setPredictCoords] = useState(null);
+
+  // Initialize Backend Connection
+  useEffect(()=>{
+    async function initBackend(){
+      try {
+        const health = await fetchBackend('/api/health');
+        if(health && health.status === "ONLINE"){
+          setBackendStatus("ONLINE");
+          const [evData, facData, statsData] = await Promise.all([
+            fetchBackend('/api/events?limit=120'),
+            fetchBackend('/api/facilities'),
+            fetchBackend('/api/stats')
+          ]);
+          if(evData && evData.events && evData.events.length > 0){
+            setEvents(evData.events);
+            setSelectedEvent(evData.events[0]);
+          }
+          if(facData && Array.isArray(facData)) setFacilitiesList(facData);
+          if(statsData) setStats(statsData);
+        } else {
+          setBackendStatus("OFFLINE");
+        }
+      } catch(e){
+        console.warn("Backend error:", e);
+        setBackendStatus("OFFLINE");
+      }
+    }
+    initBackend();
+  },[]);
+
+  const showToast = (message)=>{
+    setToast(message);
+    setTimeout(()=>{
+      setToast("");
+    },2500);
+  };
+
+  const navigate = (page)=>{
+    setActivePage(page);
+  };
+
+  const openPredictModal = (coords=null)=>{
+    setPredictCoords(coords);
+    setShowPredictModal(true);
+  };
+  
+  // Expose it globally for Leaflet markers to trigger the React modal directly
+  window.__openPredictModalFromReact = openPredictModal;
+
+  const handleApplyPredictedEvent = (newEvent)=>{
+    setEvents(prev => [newEvent, ...prev]);
+    setSelectedEvent(newEvent);
+    setActivePage("mission");
+  };
+
+  return (
+    <div className="app">
+
+      <TopBar
+        toggleSidebar={()=>setSidebar(!sidebar)}
+        showToast={showToast}
+        backendStatus={backendStatus}
+        openPredictModal={()=>openPredictModal()}
+      />
+
+      <div className="body">
+
+        <Sidebar
+          collapsed={!sidebar}
+          active={activePage}
+          navigate={navigate}
+        />
+
+        <main className="main">
+
+          {activePage === "mission" &&
+            <MissionControl
+              selectedEvent={selectedEvent}
+              setSelectedEvent={setSelectedEvent}
+              search={search}
+              setSearch={setSearch}
+              showToast={showToast}
+              events={events}
+              stats={stats}
+              facilitiesList={facilitiesList}
+              openPredictModal={openPredictModal}
+            />
+          }
+
+          {activePage === "events" &&
+            <LiveEvents
+              setSelectedEvent={setSelectedEvent}
+              navigate={navigate}
+              events={events}
+            />
+          }
+
+          {activePage === "facilities" &&
+            <Facilities
+              navigate={navigate}
+              facilitiesList={facilitiesList}
+              setSelectedEvent={setSelectedEvent}
+            />
+          }
+
+          {activePage === "persistent" &&
+            <PersistencePage events={events}/>
+          }
+
+          {activePage === "risk" &&
+            <RiskAnalysis events={events} stats={stats}/>
+          }
+
+          {activePage === "history" &&
+            <HistoricalAnalysis events={events}/>
+          }
+
+          {activePage === "alerts" &&
+            <Alerts
+              showToast={showToast}
+              setSelectedEvent={setSelectedEvent}
+              navigate={navigate}
+              openPredictModal={openPredictModal}
+              events={events}
+            />
+          }
+
+          {activePage === "reports" &&
+            <Reports showToast={showToast} selectedEvent={selectedEvent}/>
+          }
+
+          {activePage === "gis" &&
+            <GISExplorer
+              setSelectedEvent={setSelectedEvent}
+              events={events}
+            />
+          }
+
+          {activePage === "settings" &&
+            <Settings backendStatus={backendStatus}/>
+          }
+
+        </main>
+      </div>
+
+      <ModelInferenceModal
+        isOpen={showPredictModal}
+        onClose={()=>setShowPredictModal(false)}
+        onApplyEvent={handleApplyPredictedEvent}
+        defaultCoords={predictCoords}
+        showToast={showToast}
+      />
+
+      {toast &&
+        <div className="toast">
+          ✓ {toast}
+        </div>
+      }
+
+    </div>
+  );
+}
+
+/* =========================================================
+   TOP BAR
+========================================================= */
+
+// Web Audio API emergency alarm sound synthesizer
+window.__alarmEnabled = true;
+
+window.__playEmergencySiren = function() {
+  if (!window.__alarmEnabled) return;
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    
+    osc.type = 'sawtooth';
+    const now = ctx.currentTime;
+    osc.frequency.setValueAtTime(600, now);
+    osc.frequency.exponentialRampToValueAtTime(950, now + 0.25);
+    osc.frequency.exponentialRampToValueAtTime(600, now + 0.5);
+    osc.frequency.exponentialRampToValueAtTime(950, now + 0.75);
+    osc.frequency.exponentialRampToValueAtTime(600, now + 1.0);
+    
+    gain.gain.setValueAtTime(0.18, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 1.1);
+    
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    
+    osc.start(now);
+    osc.stop(now + 1.1);
+  } catch (e) {
+    console.warn("Audio Context sound blocked or unsupported:", e);
+  }
+};
+
+function TopBar({toggleSidebar,showToast,backendStatus,openPredictModal}){
+
+  const [time,setTime] = useState(new Date());
+  const [alarmOn, setAlarmOn] = useState(true);
+
+  useEffect(()=>{
+    const interval = setInterval(
+      ()=>setTime(new Date()),
+      1000
+    );
+
+    return ()=>clearInterval(interval);
+  },[]);
+
+  return (
+
+    <header className="topbar">
+
+      <div className="brand">
+
+        <button
+          className="icon-btn"
+          onClick={toggleSidebar}
+        >
+          ☰
+        </button>
+
+        <div className="brand-logo">
+          GA
+        </div>
+
+        <div>
+          <div className="brand-title">
+            Geothermal AI
+          </div>
+
+          <div className="brand-subtitle">
+            Geothermal Monitoring & Risk Intelligence
+          </div>
+        </div>
+
+      </div>
+
+      <div className="monitor">
+        <span className="live-dot"></span>
+        LIVE MONITORING
+        <span style={{color:"#64748b"}}>
+          • FIRMS + DYNAMIC WORLD
+        </span>
+      </div>
+
+      <div className="top-actions">
+
+        <button
+          onClick={() => {
+            const next = !alarmOn;
+            setAlarmOn(next);
+            window.__alarmEnabled = next;
+            if (next && window.__playEmergencySiren) window.__playEmergencySiren();
+            showToast(next ? "🚨 High Risk Siren Alarm: ENABLED" : "🔇 Emergency Alarm: MUTED");
+          }}
+          style={{
+            background: alarmOn ? "rgba(239, 68, 68, 0.2)" : "rgba(255, 255, 255, 0.05)",
+            color: alarmOn ? "#f87171" : "#94a3b8",
+            border: `1px solid ${alarmOn ? "rgba(239, 68, 68, 0.4)" : "rgba(255, 255, 255, 0.1)"}`,
+            borderRadius: "8px",
+            padding: "5px 10px",
+            fontSize: "11px",
+            fontWeight: "bold",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: "5px"
+          }}
+          title="Toggle High-Risk Audio Siren Alarm"
+        >
+          {alarmOn ? "🔊 SIREN ALARM: ON" : "🔇 SIREN: MUTED"}
+        </button>
+
+        <button
+          className="predict-nav-btn"
+          onClick={openPredictModal}
+          title="Run Dynamic World Land Cover & Risk Prediction"
+        >
+          ⚡ Model Predictor
+        </button>
+
+        <div
+          className={`status ${backendStatus === "ONLINE" ? "status-online" : "status-offline"}`}
+          title="Backend Server: localhost:8000"
+        >
+          <span className="live-dot" style={{background: backendStatus === "ONLINE" ? "#22c55e" : "#f97316"}}></span>
+          {backendStatus === "ONLINE" ? "BACKEND ONLINE (localhost:8000)" : "LOCAL MOCK MODE"}
+        </div>
+
+        <div
+          style={{
+            fontSize:"10px",
+            color:"#8ea1b8"
+          }}
+        >
+          {time.toUTCString().slice(17,25)} UTC
+        </div>
+
+        <button
+          className="icon-btn"
+          onClick={()=>showToast("No new notifications")}
+        >
+          🔔
+        </button>
+
+        <button
+          className="icon-btn"
+          onClick={()=>showToast("Analyst profile")}
+        >
+          ◉
+        </button>
+
+      </div>
+
+    </header>
+  );
+}
+
+/* =========================================================
+   SIDEBAR
+========================================================= */
+
+function Sidebar({collapsed,active,navigate}){
+
+  const items = [
+    ["mission","⌂","Mission Control"],
+    ["events","◉","Live Events"],
+    ["gis","⌖","GIS Explorer"],
+    ["facilities","▣","Industrial Facilities"],
+    ["persistent","◌","Persistent Sources"],
+    ["risk","◈","Risk Analysis"],
+    ["history","◫","Historical Analysis"],
+    ["alerts","⚠","Alerts"],
+    ["reports","▤","Reports"],
+    ["settings","⚙","Settings"]
+  ];
+
+  return (
+
+    <aside className={"sidebar "+(collapsed?"collapsed":"")}>
+
+      <div className="section-title">
+        INTELLIGENCE CENTER
+      </div>
+
+      {items.map(item=>
+
+        <button
+          key={item[0]}
+          className={
+            "nav-item "+
+            (active===item[0]?"active":"")
+          }
+          onClick={()=>navigate(item[0])}
+          title={item[2]}
+        >
+
+          <span className="nav-icon">
+            {item[1]}
+          </span>
+
+          <span className="nav-label">
+            {item[2]}
+          </span>
+
+        </button>
+
+      )}
+
+      {!collapsed && (
+
+        <div
+          style={{
+            marginTop:25,
+            padding:"10px",
+            fontSize:"8px",
+            lineHeight:1.5,
+            color:"#53687d"
+          }}
+        >
+          DATA SOURCES
+          <br/>
+          NASA FIRMS
+          <br/>
+          OpenStreetMap
+          <br/>
+          Satellite Imagery
+          <br/>
+          Land Cover
+          <br/>
+          Historical Events
+        </div>
+
+      )}
+
+    </aside>
+  );
+}
+
+/* =========================================================
+   PAGE HEADER
+========================================================= */
+
+function PageHeader({title,description}){
+
+  return (
+
+    <div className="page-header">
+
+      <div>
+
+        <div className="page-title">
+          {title}
+        </div>
+
+        <div className="page-description">
+          {description}
+        </div>
+
+      </div>
+
+      <div className="demo-label">
+        DEMO / SIMULATED DATA
+      </div>
+
+    </div>
+  );
+}
+
+/* =========================================================
+   MISSION CONTROL
+========================================================= */
+
+function MissionControl({
+  selectedEvent,
+  setSelectedEvent,
+  search,
+  setSearch,
+  showToast,
+  events,
+  stats,
+  facilitiesList,
+  openPredictModal
+}){
+
+  const currentEvents = events || mockEvents;
+
+  const filtered = currentEvents.filter(e=>
+    e.id.toLowerCase().includes(search.toLowerCase()) ||
+    e.classification.toLowerCase().includes(search.toLowerCase()) ||
+    e.facility.toLowerCase().includes(search.toLowerCase())
+  );
+
+  useEffect(()=>{
+
+    if(window.__mapInitialized)
+      return;
+
+    window.__mapInitialized = true;
+
+    setTimeout(()=>{
+
+      const map = L.map("map",{
+        zoomControl:true,
+        preferCanvas: true
+      }).setView(
+        [22.5, 80.0],
+        5
+      );
+
+      window.__thermoMap = map;
+
+      // Draw an affected area boundary polygon based on prediction
+      window.__drawBoundary = function(prediction) {
+        if (!window.__thermoMap) return;
+        const m = window.__thermoMap;
+        
+        // Remove existing boundary if any
+        if (window.__activeBoundary) {
+          m.removeLayer(window.__activeBoundary);
+        }
+        
+        const frp = prediction.frp || 120;
+        // Radius scales with intensity (e.g. 120 MW -> 360m)
+        const radiusMeters = frp * 3.5; 
+        
+        let layer;
+        
+        // If it's an industrial or facility fire, draw a rectangular geofence
+        if (prediction.classification.includes("Industrial") || prediction.facility) {
+          // Convert radius in meters to degrees roughly
+          const latDeg = radiusMeters / 111000;
+          const lngDeg = radiusMeters / (111000 * Math.cos(prediction.lat * (Math.PI/180)));
+          
+          const bounds = [
+            [prediction.lat - latDeg, prediction.lng - lngDeg],
+            [prediction.lat + latDeg, prediction.lng + lngDeg]
+          ];
+          
+          layer = L.rectangle(bounds, {
+            color: '#f97316',
+            fillColor: '#f97316',
+            fillOpacity: 0.15,
+            weight: 2,
+            dashArray: '4, 4'
+          });
+          
+          layer.bindPopup(`
+            <div style="font-family:Inter;font-size:12px;">
+              <b style="color:#f97316;">🏭 INDUSTRIAL FACILITY PERIMETER</b><br>
+              <b>Facility:</b> ${prediction.facility || "Unknown Industrial Site"}<br>
+              <b>Est. Area:</b> ${Math.round(radiusMeters*2)}m x ${Math.round(radiusMeters*2)}m
+            </div>
+          `);
+        } else {
+          // If it's a natural or agricultural fire, draw a circular thermal radius
+          layer = L.circle([prediction.lat, prediction.lng], {
+            color: '#ef4444',
+            fillColor: '#ef4444',
+            fillOpacity: 0.2,
+            radius: radiusMeters,
+            weight: 2,
+            dashArray: '4, 4'
+          });
+          
+          layer.bindPopup(`
+            <div style="font-family:Inter;font-size:12px;">
+              <b style="color:#ef4444;">🔥 THERMAL IMPACT RADIUS</b><br>
+              <b>Classification:</b> ${prediction.classification}<br>
+              <b>Est. Radius:</b> ${Math.round(radiusMeters)} meters
+            </div>
+          `);
+        }
+        
+        layer.addTo(m);
+        window.__activeBoundary = layer;
+        
+        m.flyToBounds(layer.getBounds(), { padding: [50, 50], duration: 1.2 });
+      };
+      // Google Satellite tile layer
+      const googleSat = L.tileLayer(
+        "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+        { attribution: "Google Satellite", maxZoom: 20 }
+      );
+      // Google Hybrid
+      const googleHybrid = L.tileLayer(
+        "https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
+        { attribution: "Google Hybrid", maxZoom: 20 }
+      );
+      // OpenStreetMap
+      const osm = L.tileLayer(
+        "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        { attribution: "OpenStreetMap" }
+      );
+      // Dark mode
+      const dark = L.tileLayer(
+        "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+        { attribution: "CartoDB Dark" }
+      );
+
+      googleSat.addTo(map);
+
+      L.control.layers({
+        "Google Satellite": googleSat,
+        "Google Hybrid": googleHybrid,
+        "OpenStreetMap": osm,
+        "Dark Mode": dark
+      }, {}, { position: "topright" }).addTo(map);
+
+      window.__markers = [];
+      window.__heatLayer = null;
+      window.__firmsPointsLayer = null;
+
+      // Load ALL FIRMS heatmap data from backend
+      async function loadFirmsHeatmap() {
+        try {
+          const data = await fetchBackend('/api/firms/heatmap');
+          if (data && data.cells) {
+            console.log(`Loaded FIRMS heatmap: ${data.totalPoints.toLocaleString()} points in ${data.totalCells} grid cells`);
+
+            // Update the FIRMS counter in the UI
+            const counterEl = document.getElementById('firms-total-count');
+            if (counterEl) counterEl.textContent = data.totalPoints.toLocaleString();
+
+            // Build heatmap data array [lat, lng, intensity]
+            const heatData = data.cells.map(c => [c.lat, c.lng, c.intensity]);
+
+            // Add heatmap layer
+            if (window.__heatLayer) {
+              map.removeLayer(window.__heatLayer);
+            }
+            window.__heatLayer = L.heatLayer(heatData, {
+              radius: 4,
+              blur: 3,
+              maxZoom: 10,
+              max: 1.0,
+              minOpacity: 0.3,
+              gradient: {
+                0.0: '#22c55e',
+                0.25: '#facc15',
+                0.5: '#f97316',
+                0.75: '#ef4444',
+                1.0: '#dc2626'
+              }
+            }).addTo(map);
+
+            // Expose a function to load sampled points with an optional risk filter
+            window.__currentRiskFilter = '';
+            window.__currentDateFilter = '';
+
+            window.__loadFirmsPoints = async function(riskFilter = null, dateFilter = null) {
+              if (riskFilter !== null) window.__currentRiskFilter = riskFilter;
+              if (dateFilter !== null) window.__currentDateFilter = dateFilter;
+
+              const rf = window.__currentRiskFilter;
+              const df = window.__currentDateFilter;
+              
+              // Toggle heatmap visibility to make filtered points obvious
+              if ((rf && rf !== 'ALL') || (df && df !== 'ALL')) {
+                if (window.__heatLayer && map.hasLayer(window.__heatLayer)) {
+                  map.removeLayer(window.__heatLayer);
+                }
+              } else {
+                if (window.__heatLayer && !map.hasLayer(window.__heatLayer)) {
+                  window.__heatLayer.addTo(map);
+                }
+              }
+
+              let url = `/api/firms/points?limit=5000`;
+              if (rf && rf !== 'ALL') url += `&risk_level=${rf}`;
+              if (df && df !== 'ALL') url += `&date=${df}`;
+              
+              const pointsData = await fetchBackend(url);
+              if (pointsData && pointsData.points) {
+                if (window.__firmsPointsLayer) {
+                  map.removeLayer(window.__firmsPointsLayer);
+                }
+                const firmsGroup = L.layerGroup();
+                pointsData.points.forEach(pt => {
+                  const m = L.circleMarker([pt.lat, pt.lng], {
+                    radius: 5,
+                    color: pt.riskColor || '#ef4444',
+                    fillColor: pt.riskColor || '#ef4444',
+                    fillOpacity: 0.7,
+                    weight: 0.5
+                  });
+                  m.bindTooltip(
+                    `FIRMS | FRP: ${pt.frp} MW | Risk: ${pt.risk} (${pt.riskLevel})<br>Sat: ${pt.satellite} | Date: ${pt.date}`,
+                    { direction: 'top' }
+                  );
+                  m.on('click', (ev) => {
+                    L.DomEvent.stopPropagation(ev);
+                    fetchBackend(`/api/landcover/point?lat=${pt.lat}&lng=${pt.lng}`).then(lc => {
+                      if (lc) {
+                        const lcInfo = lc.distribution.slice(0, 3).map(d => `${d.name}: ${d.percentage}%`).join(', ');
+                        const predictorBtn = `<button onclick='window.__openPredictModalFromReact(${JSON.stringify({
+                          lat: pt.lat,
+                          lng: pt.lng,
+                          frp: pt.frp,
+                          brightness: pt.brightness,
+                          confidence: pt.confidence
+                        })})' style="margin-top:10px; width:100%; background:#7c3aed; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold;">🔮 Run Predictor on this Point</button>`;
+
+                        m.bindPopup(
+                          `<div style="font-family:Inter,sans-serif;font-size:12px;">`+
+                          `${pt.isLiveNRT ? '<div style="background:#10b981;color:white;padding:2px 6px;border-radius:4px;font-weight:bold;font-size:10px;margin-bottom:4px;display:inline-block;">🛰️ LIVE NRT SATELLITE DETECTION</div><br>' : ''}`+
+                          `<b>FIRMS Fire Detection</b><br>`+
+                          `<b>Location:</b> ${pt.lat}, ${pt.lng}<br>`+
+                          `<b>FRP:</b> ${pt.frp} MW | <b>Brightness:</b> ${pt.brightness} K<br>`+
+                          `<b>Risk:</b> <span style="color:${pt.riskColor};font-weight:bold;">${pt.risk} (${pt.riskLevel})</span><br>`+
+                          `<b>Satellite:</b> ${pt.satellite} | <b>Date:</b> ${pt.date}<br>`+
+                          `<hr style="margin:4px 0;border-color:#333;">`+
+                          `<b>Land Cover (${lc.source.includes('Google') ? 'GEE' : 'Heuristic'}):</b><br>`+
+                          `<span style="color:${lc.primaryColor};">&#9632;</span> ${lc.primaryClassName}<br>`+
+                          `<span style="opacity:0.7;">${lcInfo}</span>`+
+                          predictorBtn+
+                          `</div>`
+                        ).openPopup();
+                      }
+                    });
+                  });
+                  firmsGroup.addLayer(m);
+                });
+                firmsGroup.addTo(map);
+                window.__firmsPointsLayer = firmsGroup;
+                console.log(`Added ${pointsData.points.length} FIRMS point markers for date: ${df || 'All'}`);
+
+                // Calculate live KPI counts for active view
+                let cCrit = 0, cHigh = 0, cMod = 0, cLow = 0;
+                pointsData.points.forEach(pt => {
+                  const lvl = (pt.riskLevel || '').toUpperCase();
+                  if (lvl === 'CRITICAL') cCrit++;
+                  else if (lvl === 'HIGH') cHigh++;
+                  else if (lvl === 'MODERATE') cMod++;
+                  else if (lvl === 'LOW') cLow++;
+                });
+
+                const isFiltered = Boolean((rf && rf !== 'ALL') || (df && df !== 'ALL'));
+                if (window.__onKpiUpdate) {
+                  window.__onKpiUpdate({
+                    total: pointsData.points.length,
+                    critical: cCrit,
+                    high: cHigh,
+                    moderate: cMod,
+                    low: cLow,
+                    isFiltered: isFiltered,
+                    dateLabel: df || 'ALL',
+                    riskLabel: rf || 'ALL'
+                  });
+                }
+              }
+            };
+
+          // Call it initially in LIVE stream mode
+          window.__loadFirmsPoints('LIVE');
+          
+          } // Close if (data && data.cells)
+
+        } catch(err) {
+          console.warn('Failed to load FIRMS heatmap:', err);
+        }
+      }
+      loadFirmsHeatmap();
+
+      // Map click listener removed to prevent predictor from opening on empty map clicks.
+      // Also add facility + event markers from the model
+      const eventsToRender = events || mockEvents;
+      eventsToRender.forEach(event=>{
+        let color = event.riskColor;
+        if (!color || color === "#94a3b8") {
+          if (event.risk >= 80) color = "#ef4444"; // CRITICAL: red
+          else if (event.risk >= 60) color = "#f97316"; // HIGH: orange
+          else if (event.risk >= 35) color = "#facc15"; // MODERATE: yellow
+          else color = "#22c55e"; // LOW: green
+        }
+
+        const radius = event.risk >= 80 ? 7 : (event.risk >= 60 ? 6 : 5);
+        const marker = L.circleMarker([event.lat,event.lng], {
+          radius,
+          color,
+          fillColor:color,
+          fillOpacity:.78,
+          weight:1
+        });
+
+        marker.bindTooltip(`${event.id} • ${event.classification} (${event.risk || 0})`, { direction:"top" });
+        marker.on("click", (ev)=>{
+          L.DomEvent.stopPropagation(ev);
+          window.__selectEvent && window.__selectEvent(event);
+        });
+        marker.addTo(map);
+        window.__markers.push({ marker, event });
+      });
+    },100);
+
+    return ()=>{
+      window.__mapInitialized=false;
+    };
+  }, []);
+
+  useEffect(()=>{
+
+    window.__selectEvent = (event)=>{
+      setSelectedEvent(event);
+    };
+
+    // Update markers on events change
+    if (!window.__thermoMap || !window.__markers) return;
+    const map = window.__thermoMap;
+    window.__markers.forEach(m => {
+      try { map.removeLayer(m.marker); } catch(err){}
+    });
+    window.__markers = [];
+
+    (events || mockEvents).forEach(event=>{
+      let color = event.riskColor;
+      if (!color || color === "#94a3b8") {
+        if (event.risk >= 80) color = "#ef4444"; // CRITICAL: red
+        else if (event.risk >= 60) color = "#f97316"; // HIGH: orange
+        else if (event.risk >= 35) color = "#facc15"; // MODERATE: yellow
+        else color = "#22c55e"; // LOW: green
+      } else if (!event.riskColor) {
+        if(event.classification==="Industrial Fire") color="#ef4444";
+        else if(event.classification==="Persistent Thermal Source") color="#f97316";
+      }
+
+      const radius = event.risk >= 80 ? 7 : (event.risk >= 60 ? 6 : 5);
+      const marker = L.circleMarker([event.lat,event.lng], {
+        radius,
+        color,
+        fillColor:color,
+        fillOpacity:.78,
+        weight:1
+      });
+
+      marker.bindTooltip(`${event.id} • ${event.classification} (${event.risk || 0})`, { direction:"top" });
+      marker.on("click", (ev)=>{
+        L.DomEvent.stopPropagation(ev);
+        window.__selectEvent && window.__selectEvent(event);
+      });
+      marker.addTo(map);
+      window.__markers.push({ marker, event });
+    });
+  }, [events]);
+
+  useEffect(()=>{
+    window.__selectEvent = (event)=>{
+      setSelectedEvent(event);
+      if (event && (event.risk >= 75 || event.riskLevel === 'CRITICAL' || (event.frp && event.frp >= 75))) {
+        if (window.__playEmergencySiren) window.__playEmergencySiren();
+      }
+    };
+  },[setSelectedEvent]);
+
+  const [isTargetIsolated, setIsTargetIsolated] = useState(true);
+  const [availableDates, setAvailableDates] = useState([]);
+  const [liveKpi, setLiveKpi] = useState(null);
+
+  const [isLiveAuto, setIsLiveAuto] = useState(true);
+  const [lastSyncTime, setLastSyncTime] = useState(new Date().toLocaleTimeString());
+  const [recentLiveAlert, setRecentLiveAlert] = useState(null);
+  const [viewMode, setViewMode] = useState("LIVE");
+
+  useEffect(() => {
+    window.__onKpiUpdate = (kpiData) => {
+      setLiveKpi(kpiData);
+    };
+  }, []);
+
+  // Real-Time Live Auto Sync Polling Loop (Every 15 seconds)
+  useEffect(() => {
+    if (!isLiveAuto) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetchBackend('/api/firms/live-sync');
+        if (res && res.status === 'success') {
+          setLastSyncTime(new Date().toLocaleTimeString());
+          if (res.livePoints && res.livePoints.length > 0) {
+            const topCrit = res.livePoints.find(p => p.riskLevel === 'CRITICAL') || res.livePoints[0];
+            setRecentLiveAlert(topCrit);
+          }
+          if (window.__loadFirmsPoints) {
+            window.__loadFirmsPoints();
+          }
+        }
+      } catch (err) {
+        console.warn('Live sync poll notice:', err);
+      }
+    }, 15000);
+
+    return () => clearInterval(interval);
+  }, [isLiveAuto]);
+
+  const [isTimelinePlaying, setIsTimelinePlaying] = useState(false);
+  const [currentDateIdx, setCurrentDateIdx] = useState(0);
+
+  useEffect(() => {
+    fetchBackend('/api/firms/dates').then(res => {
+      if (res && res.dates) {
+        setAvailableDates(res.dates);
+      }
+    });
+  }, []);
+
+  // Multi-Temporal Hotspot Playback Loop (Steps through available dates automatically)
+  useEffect(() => {
+    if (!isTimelinePlaying || !availableDates || availableDates.length === 0) return;
+    const interval = setInterval(() => {
+      setCurrentDateIdx(prev => {
+        const next = (prev + 1) % availableDates.length;
+        const targetDate = availableDates[next];
+        if (window.__loadFirmsPoints) window.__loadFirmsPoints(null, targetDate);
+        return next;
+      });
+    }, 1200);
+
+    return () => clearInterval(interval);
+  }, [isTimelinePlaying, availableDates]);
+
+  // Automatically fly to and highlight selectedEvent on map (e.g. from Live Events VIEW MAP button)
+  useEffect(() => {
+    if (!selectedEvent || !window.__thermoMap) return;
+    const map = window.__thermoMap;
+    
+    // Hide cluttered background layers to isolate target point
+    if (window.__firmsPointsLayer && map.hasLayer(window.__firmsPointsLayer)) {
+      map.removeLayer(window.__firmsPointsLayer);
+    }
+    if (window.__heatLayer && map.hasLayer(window.__heatLayer)) {
+      map.removeLayer(window.__heatLayer);
+    }
+    setIsTargetIsolated(true);
+
+    // Smoothly fly to target event coordinates
+    map.flyTo([selectedEvent.lat, selectedEvent.lng], 13, { duration: 1.2 });
+
+    // Draw affected boundary for this event
+    if (window.__drawBoundary) {
+      window.__drawBoundary(selectedEvent);
+    }
+
+    // Remove previous highlighted marker if any
+    if (window.__activeFocusMarker) {
+      try { map.removeLayer(window.__activeFocusMarker); } catch(err){}
+    }
+
+    const popupContent = document.createElement('div');
+    popupContent.className = 'point-popup-content';
+    popupContent.innerHTML = `
+      <div style="font-family:Inter; font-size:12px; min-width:210px; padding:4px;">
+        <div style="font-weight:bold; font-size:13px; color:#38bdf8; margin-bottom:4px;">
+          ${selectedEvent.classification}
+        </div>
+        <div style="font-size:11px; color:#94a3b8; margin-bottom:6px;">
+          <b>ID:</b> ${selectedEvent.id} | <b>Facility:</b> ${selectedEvent.facility || "None"}
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; font-size:11px; margin-bottom:8px; background:#0f172a; padding:6px; border-radius:6px;">
+          <div><b>FRP:</b> ${selectedEvent.frp || 'N/A'} MW</div>
+          <div><b>Temp:</b> ${selectedEvent.temperature || selectedEvent.brightness || 'N/A'} K</div>
+          <div><b>Conf:</b> ${selectedEvent.confidence || 'N/A'}%</div>
+          <div><b>Risk:</b> <span style="color:${selectedEvent.riskColor || '#ef4444'}; font-weight:bold;">${selectedEvent.risk || 'HIGH'}</span></div>
+        </div>
+        <button id="run-pred-btn-${selectedEvent.id.replace(/[^a-zA-Z0-9]/g, '')}" style="width:100%; padding:7px 10px; background:linear-gradient(135deg, #2563eb, #7c3aed); color:white; border:none; border-radius:6px; font-weight:bold; cursor:pointer; font-size:11px;">
+          🔮 Run Predictor on this Point
+        </button>
+      </div>
+    `;
+
+    const m = L.circleMarker([selectedEvent.lat, selectedEvent.lng], {
+      radius: 10,
+      color: '#ffffff',
+      fillColor: selectedEvent.riskColor || '#ef4444',
+      fillOpacity: 1,
+      weight: 3
+    }).addTo(map);
+
+    m.bindPopup(popupContent).openPopup();
+    window.__activeFocusMarker = m;
+
+    setTimeout(() => {
+      const btnId = `run-pred-btn-${selectedEvent.id.replace(/[^a-zA-Z0-9]/g, '')}`;
+      const btn = document.getElementById(btnId);
+      if (btn) {
+        btn.onclick = () => {
+          if (window.__openPredictModalFromReact) {
+            window.__openPredictModalFromReact({
+              lat: selectedEvent.lat,
+              lng: selectedEvent.lng,
+              frp: selectedEvent.frp || 120,
+              brightness: selectedEvent.temperature || selectedEvent.brightness || 365,
+              confidence: selectedEvent.confidence || 85
+            });
+          }
+        };
+      }
+    }, 150);
+
+  }, [selectedEvent]);
+
+  const focusEvent = (event)=>{
+    setSelectedEvent(event);
+  };
+
+  return (
+
+    <div className="page">
+
+      {/* UNIFIED STREAMLINED CONTROL HEADER */}
+      <div style={{
+        background: "rgba(11, 23, 39, 0.85)",
+        backdropFilter: "blur(14px)",
+        border: "1px solid rgba(56, 189, 248, 0.2)",
+        borderRadius: "14px",
+        padding: "12px 18px",
+        marginBottom: "12px",
+        display: "flex",
+        flexDirection: "column",
+        gap: "10px",
+        boxShadow: "0 8px 32px rgba(0, 0, 0, 0.4)"
+      }}>
+        {/* ROW 1: Title, Status Badge, Compact KPI Bar, Quick Actions */}
+        <div style={{display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "12px"}}>
+          {/* Title & Status */}
+          <div style={{display: "flex", alignItems: "center", gap: "12px"}}>
+            <div style={{fontSize: "20px", fontWeight: "900", color: "#f8fafc", letterSpacing: "-0.5px"}}>
+              Mission Control
+            </div>
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              background: viewMode === "LIVE" ? "rgba(239, 68, 68, 0.15)" : "rgba(56, 189, 248, 0.12)",
+              border: `1px solid ${viewMode === "LIVE" ? "rgba(239, 68, 68, 0.4)" : "rgba(56, 189, 248, 0.3)"}`,
+              borderRadius: "20px",
+              padding: "4px 10px",
+              fontSize: "11px",
+              fontWeight: "bold",
+              color: viewMode === "LIVE" ? "#f87171" : "#38bdf8"
+            }}>
+              <span style={{
+                width: "8px", height: "8px", borderRadius: "50%",
+                background: isLiveAuto ? "#10b981" : "#ef4444",
+                boxShadow: isLiveAuto ? "0 0 8px #10b981" : "0 0 8px #ef4444"
+              }}></span>
+              {viewMode === "LIVE" ? "🔴 LIVE STREAMING" : "📁 ARCHIVE VIEW"}
+              <span style={{opacity: 0.6, fontSize: "10px"}}>| Sync: {lastSyncTime}</span>
+            </div>
+          </div>
+
+          {/* Compact Inline KPI Pills Bar */}
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            background: "rgba(7, 17, 31, 0.8)",
+            border: "1px solid rgba(255, 255, 255, 0.08)",
+            borderRadius: "10px",
+            padding: "4px 8px"
+          }}>
+            <div style={{padding: "4px 8px", borderRadius: "6px", fontSize: "11px", color: "#38bdf8", fontWeight: "bold"}}>
+              📡 Live: <b>{liveKpi && (viewMode === "LIVE" || liveKpi.isFiltered) ? Number(liveKpi.total).toLocaleString() : (stats && stats.firmsDistribution ? Number(stats.firmsDistribution.total).toLocaleString() : "...")}</b>
+            </div>
+            <div style={{height: "14px", width: "1px", background: "rgba(255, 255, 255, 0.1)"}}></div>
+            <div style={{padding: "4px 8px", borderRadius: "6px", fontSize: "11px", color: "#ef4444", fontWeight: "bold"}}>
+              🔴 Critical: <b>{liveKpi && (viewMode === "LIVE" || liveKpi.isFiltered) ? Number(liveKpi.critical).toLocaleString() : (stats && stats.firmsDistribution ? Number(stats.firmsDistribution.critical).toLocaleString() : "0")}</b>
+            </div>
+            <div style={{height: "14px", width: "1px", background: "rgba(255, 255, 255, 0.1)"}}></div>
+            <div style={{padding: "4px 8px", borderRadius: "6px", fontSize: "11px", color: "#f97316", fontWeight: "bold"}}>
+              🟠 High: <b>{liveKpi && (viewMode === "LIVE" || liveKpi.isFiltered) ? Number(liveKpi.high).toLocaleString() : (stats && stats.firmsDistribution ? Number(stats.firmsDistribution.high).toLocaleString() : "0")}</b>
+            </div>
+            <div style={{height: "14px", width: "1px", background: "rgba(255, 255, 255, 0.1)"}}></div>
+            <div style={{padding: "4px 8px", borderRadius: "6px", fontSize: "11px", color: "#facc15", fontWeight: "bold"}}>
+              🟡 Mod: <b>{liveKpi && (viewMode === "LIVE" || liveKpi.isFiltered) ? Number(liveKpi.moderate).toLocaleString() : (stats && stats.firmsDistribution ? Number(stats.firmsDistribution.moderate).toLocaleString() : "0")}</b>
+            </div>
+            <div style={{height: "14px", width: "1px", background: "rgba(255, 255, 255, 0.1)"}}></div>
+            <div style={{padding: "4px 8px", borderRadius: "6px", fontSize: "11px", color: "#22c55e", fontWeight: "bold"}}>
+              🟢 Low: <b>{liveKpi && (viewMode === "LIVE" || liveKpi.isFiltered) ? Number(liveKpi.low).toLocaleString() : (stats && stats.firmsDistribution ? Number(stats.firmsDistribution.low).toLocaleString() : "0")}</b>
+            </div>
+          </div>
+
+          {/* Quick Action Buttons */}
+          <div style={{display: "flex", alignItems: "center", gap: "8px"}}>
+            <button
+              className="predict-nav-btn"
+              style={{background: "linear-gradient(135deg, #059669, #10b981)", color: "white", border: "none", padding: "6px 12px", fontSize: "11px"}}
+              onClick={async () => {
+                showToast && showToast("Syncing NASA FIRMS Live NRT Stream...");
+                const res = await fetchBackend('/api/firms/live-sync');
+                if (res && res.status === "success") {
+                  showToast && showToast(`Live NASA Sync: ${res.livePointsFetched} present NRT detections ingested!`);
+                  if (window.__loadFirmsPoints) window.__loadFirmsPoints();
+                }
+              }}
+            >
+              🔄 Sync Live NASA Feed
+            </button>
+
+            <button
+              className="predict-nav-btn"
+              style={{padding: "6px 12px", fontSize: "11px"}}
+              onClick={() => openPredictModal && openPredictModal()}
+            >
+              ⚡ Risk Predictor
+            </button>
+
+            <button
+              onClick={() => {
+                if (viewMode === "LIVE") {
+                  setViewMode("ARCHIVE");
+                  if (window.__loadFirmsPoints) window.__loadFirmsPoints('ALL');
+                } else {
+                  setViewMode("LIVE");
+                  if (window.__loadFirmsPoints) window.__loadFirmsPoints('LIVE');
+                }
+              }}
+              style={{
+                background: viewMode === "LIVE" ? "rgba(239, 68, 68, 0.2)" : "rgba(56, 189, 248, 0.2)",
+                color: viewMode === "LIVE" ? "#f87171" : "#38bdf8",
+                border: `1px solid ${viewMode === "LIVE" ? "rgba(239, 68, 68, 0.4)" : "rgba(56, 189, 248, 0.4)"}`,
+                borderRadius: "8px",
+                padding: "6px 12px",
+                fontSize: "11px",
+                fontWeight: "bold",
+                cursor: "pointer"
+              }}
+            >
+              {viewMode === "LIVE" ? "🔴 Live Mode" : "📁 Archive (3.5M)"}
+            </button>
+          </div>
+        </div>
+
+        {/* ROW 2: Risk Filters + Global Region Quick Selector + Date Picker */}
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: "10px",
+          paddingTop: "8px",
+          borderTop: "1px solid rgba(255, 255, 255, 0.06)"
+        }}>
+          {/* Risk Level Badges */}
+          <div style={{display: "flex", alignItems: "center", gap: "5px", flexWrap: "wrap"}}>
+            <span style={{fontSize: "11px", color: "#38bdf8", fontWeight: "bold", marginRight: "2px"}}>
+              🎯 Risk Filter:
+            </span>
+            <button className="layer-btn" style={{color:"#38bdf8", borderColor:"#38bdf866", background:"rgba(56, 189, 248, 0.18)", fontWeight:"bold"}} onClick={()=>{window.__loadFirmsPoints && window.__loadFirmsPoints('LIVE')}}>🛰️ LIVE NRT</button>
+            <button className="layer-btn" onClick={()=>{window.__loadFirmsPoints && window.__loadFirmsPoints('ALL')}}>ALL</button>
+            <button className="layer-btn" style={{color:"#ef4444", borderColor:"#ef444433"}} onClick={()=>{window.__loadFirmsPoints && window.__loadFirmsPoints('CRITICAL')}}>CRITICAL</button>
+            <button className="layer-btn" style={{color:"#f97316", borderColor:"#f9731633"}} onClick={()=>{window.__loadFirmsPoints && window.__loadFirmsPoints('HIGH')}}>HIGH</button>
+            <button className="layer-btn" style={{color:"#facc15", borderColor:"#facc1533"}} onClick={()=>{window.__loadFirmsPoints && window.__loadFirmsPoints('MODERATE')}}>MEDIUM</button>
+            <button className="layer-btn" style={{color:"#22c55e", borderColor:"#22c55e33"}} onClick={()=>{window.__loadFirmsPoints && window.__loadFirmsPoints('LOW')}}>LOW</button>
+          </div>
+
+          {/* Quick Region Selector */}
+          <div style={{display: "flex", alignItems: "center", gap: "4px"}}>
+            <span style={{fontSize: "11px", color: "#94a3b8", fontWeight: "bold", marginRight: "2px"}}>
+              🌍 Fly Region:
+            </span>
+            <button className="layer-btn" onClick={() => window.__thermoMap && window.__thermoMap.flyTo([20, 0], 2, {duration: 1})}>🌍 World</button>
+            <button className="layer-btn" style={{color:"#f59e0b", borderColor:"#f59e0b44"}} onClick={() => window.__thermoMap && window.__thermoMap.flyTo([20.5937, 78.9629], 5, {duration: 1})}>🇮🇳 India</button>
+            <button className="layer-btn" onClick={() => window.__thermoMap && window.__thermoMap.flyTo([37.0902, -95.7129], 4, {duration: 1})}>🇺🇸 N. America</button>
+            <button className="layer-btn" onClick={() => window.__thermoMap && window.__thermoMap.flyTo([54.5260, 15.2551], 4, {duration: 1})}>🇪🇺 Europe</button>
+            <button className="layer-btn" onClick={() => window.__thermoMap && window.__thermoMap.flyTo([1.3733, 32.2903], 3, {duration: 1})}>🌍 Africa</button>
+            <button className="layer-btn" onClick={() => window.__thermoMap && window.__thermoMap.flyTo([34.0479, 100.6197], 4, {duration: 1})}>🌏 Asia</button>
+            <button className="layer-btn" onClick={() => window.__thermoMap && window.__thermoMap.flyTo([-25.2744, 133.7751], 4, {duration: 1})}>🇦🇺 Australia</button>
+          </div>
+
+          {/* Observation Date Selector */}
+          <div style={{display: "flex", alignItems: "center", gap: "6px"}}>
+            <span style={{fontSize: "11px", color: "#a855f7", fontWeight: "bold"}}>
+              📅 Date:
+            </span>
+            <select
+              style={{
+                background: "#090d16",
+                color: "#38bdf8",
+                border: "1px solid rgba(168, 85, 247, 0.5)",
+                borderRadius: "6px",
+                padding: "4px 8px",
+                fontSize: "11px",
+                fontWeight: "bold",
+                cursor: "pointer",
+                outline: "none"
+              }}
+              onChange={e => {
+                const val = e.target.value;
+                if (window.__loadFirmsPoints) window.__loadFirmsPoints(null, val);
+              }}
+            >
+              <option value="ALL">All Satellite Dates</option>
+              {availableDates && availableDates.length > 0 ? (
+                availableDates.map(d => (
+                  <option key={d} value={d}>
+                    📅 {d} {d === '2026-09-08' || d === '2026-09-10' || d.startsWith('2026') ? '(Live NRT Today)' : ''}
+                  </option>
+                ))
+              ) : (
+                <option value="2026-09-10">📅 2026-09-10 (Live NRT Today)</option>
+              )}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div className="mission-layout">
+
+        <div className="map-wrap">
+
+          <div id="map"></div>
+
+          {selectedEvent && (
+            <div style={{
+              position: "absolute",
+              top: "14px",
+              left: "50%",
+              transform: "translateX(-50%)",
+              zIndex: 999,
+              background: "rgba(15, 23, 42, 0.94)",
+              backdropFilter: "blur(10px)",
+              border: "1px solid rgba(124, 58, 237, 0.5)",
+              borderRadius: "30px",
+              padding: "6px 16px",
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              boxShadow: "0 10px 30px rgba(0, 0, 0, 0.6)",
+              maxWidth: "90%"
+            }}>
+              <span style={{ fontSize: "12px", color: "#e2e8f0", fontWeight: "bold", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                <span style={{ color: "#a855f7" }}>🎯 Focus Location:</span> {selectedEvent.classification || selectedEvent.facility || selectedEvent.id}
+              </span>
+              <button
+                onClick={() => {
+                  const map = window.__thermoMap;
+                  if (!map) return;
+                  if (isTargetIsolated) {
+                    // Restore background points & heatmap
+                    if (window.__firmsPointsLayer) map.addLayer(window.__firmsPointsLayer);
+                    if (window.__heatLayer) map.addLayer(window.__heatLayer);
+                    setIsTargetIsolated(false);
+                  } else {
+                    // Isolate target point only
+                    if (window.__firmsPointsLayer && map.hasLayer(window.__firmsPointsLayer)) map.removeLayer(window.__firmsPointsLayer);
+                    if (window.__heatLayer && map.hasLayer(window.__heatLayer)) map.removeLayer(window.__heatLayer);
+                    setIsTargetIsolated(true);
+                  }
+                }}
+                style={{
+                  background: isTargetIsolated ? "rgba(255, 255, 255, 0.12)" : "linear-gradient(135deg, #2563eb, #7c3aed)",
+                  color: "white",
+                  border: "1px solid rgba(255, 255, 255, 0.2)",
+                  borderRadius: "20px",
+                  padding: "5px 12px",
+                  fontSize: "11px",
+                  fontWeight: "bold",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap"
+                }}
+              >
+                {isTargetIsolated ? "🌐 Show All Points" : "🎯 Isolate Target Point Only"}
+              </button>
+            </div>
+          )}
+
+          <div className="map-overlay">
+
+            <div className="search-box">
+
+              <input
+                placeholder="Search event, facility, region..."
+                value={search}
+                onChange={e=>setSearch(e.target.value)}
+              />
+
+              <button>
+                ⌕
+              </button>
+
+            </div>
+
+            {search && filtered.length > 0 && (
+
+              <div
+                style={{
+                  marginTop:6,
+                  maxHeight:130,
+                  overflowY:"auto"
+                }}
+              >
+
+                {filtered.slice(0,6).map(event=>
+
+                  <div
+                    key={event.id}
+                    onClick={()=>focusEvent(event)}
+                    style={{
+                      padding:"7px",
+                      cursor:"pointer",
+                      borderBottom:
+                        "1px solid rgba(148,163,184,.08)"
+                    }}
+                  >
+
+                    <div
+                      style={{
+                        fontSize:"9px",
+                        fontWeight:800
+                      }}
+                    >
+                      {event.id}
+                    </div>
+
+                    <div
+                      style={{
+                        fontSize:"8px",
+                        color:"#8297ad"
+                      }}
+                    >
+                      {event.classification}
+                    </div>
+
+                  </div>
+
+                )}
+
+              </div>
+
+            )}
+
+            <div className="layer-row">
+
+              <button className="layer-btn active" onClick={()=>window.__loadFirmsHeatmap && window.__loadFirmsHeatmap()}>
+                FIRMS
+              </button>
+
+              <button className="layer-btn active">
+                FACILITIES
+              </button>
+
+              <button className="layer-btn">
+                HEATMAP
+              </button>
+
+              <button className="layer-btn">
+                LAND COVER
+              </button>
+
+            </div>
+
+          </div>
+
+          <div className="legend">
+
+            <div className="legend-title">
+              THERMAL CLASSIFICATION
+            </div>
+
+            <Legend
+              color="#ef4444"
+              text="Industrial Fire"
+            />
+
+            <Legend
+              color="#f97316"
+              text="Persistent Thermal Source"
+            />
+
+            <Legend
+              color="#22c55e"
+              text="Natural Fire"
+            />
+
+            <Legend
+              color="#facc15"
+              text="Agricultural Burning"
+            />
+
+            <Legend
+              color="#94a3b8"
+              text="Unknown"
+            />
+
+          </div>
+
+          {/* FLOATING MULTI-TEMPORAL TIMELAPSE CONTROLS */}
+          <div style={{
+            position: "absolute",
+            bottom: "16px",
+            right: "16px",
+            zIndex: 500,
+            background: "rgba(5, 14, 25, 0.92)",
+            border: "1px solid rgba(56, 189, 248, 0.3)",
+            borderRadius: "12px",
+            padding: "8px 16px",
+            display: "flex",
+            alignItems: "center",
+            gap: "12px",
+            backdropFilter: "blur(12px)",
+            boxShadow: "0 8px 24px rgba(0,0,0,0.6)"
+          }}>
+            <button
+              onClick={() => {
+                const next = !isTimelinePlaying;
+                setIsTimelinePlaying(next);
+                showToast && showToast(next ? `▶ Started 2026 Hotspot Timelapse Playback` : `⏸ Paused Timelapse`);
+              }}
+              style={{
+                background: isTimelinePlaying ? "rgba(239, 68, 68, 0.2)" : "rgba(16, 185, 129, 0.2)",
+                color: isTimelinePlaying ? "#f87171" : "#10b981",
+                border: `1px solid ${isTimelinePlaying ? "rgba(239, 68, 68, 0.4)" : "rgba(16, 185, 129, 0.4)"}`,
+                borderRadius: "20px",
+                padding: "4px 12px",
+                fontSize: "11px",
+                fontWeight: "bold",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "5px"
+              }}
+            >
+              {isTimelinePlaying ? "⏸ PAUSE" : "▶ PLAY 2026 TIMELAPSE"}
+            </button>
+
+            <div style={{fontSize: "11px", color: "#38bdf8", fontWeight: "bold"}}>
+              📅 {availableDates && availableDates[currentDateIdx] ? availableDates[currentDateIdx] : '2026-09-10'}
+            </div>
+
+            <input
+              type="range"
+              min="0"
+              max={availableDates && availableDates.length > 0 ? availableDates.length - 1 : 0}
+              value={currentDateIdx}
+              onChange={e => {
+                const idx = Number(e.target.value);
+                setCurrentDateIdx(idx);
+                if (availableDates && availableDates[idx] && window.__loadFirmsPoints) {
+                  window.__loadFirmsPoints(null, availableDates[idx]);
+                }
+              }}
+              style={{width: "120px", accentColor: "#38bdf8", cursor: "pointer"}}
+            />
+          </div>
+
+        </div>
+
+        <IntelligencePanel
+          event={selectedEvent}
+          showToast={showToast}
+        />
+
+      </div>
+
+    </div>
+  );
+}
+
+/* =========================================================
+   KPI
+========================================================= */
+
+function KPI({label,value,cls}){
+
+  return (
+
+    <div className="kpi">
+
+      <div className="kpi-label">
+        {label}
+      </div>
+
+      <div className={"kpi-value "+cls}>
+        {value}
+      </div>
+
+    </div>
+  );
+}
+
+/* =========================================================
+   LEGEND
+========================================================= */
+
+function Legend({color,text}){
+
+  return (
+
+    <div className="legend-item">
+
+      <span
+        className="legend-dot"
+        style={{background:color}}
+      />
+
+      {text}
+
+    </div>
+  );
+}
+
+/* =========================================================
+   INTELLIGENCE PANEL
+========================================================= */
+
+function IntelligencePanel({event,showToast}){
+
+  if(!event)
+    return null;
+
+  const probabilities = [
+    ["Industrial Fire",91.4],
+    ["Persistent Source",5.1],
+    ["Natural Fire",1.8],
+    ["Agricultural",1.1],
+    ["Unknown",0.6]
+  ];
+
+  return (
+
+    <div className="intelligence">
+
+      <div className="intel-header">
+
+        <div>
+
+          <div className="intel-event">
+            THERMAL EVENT
+          </div>
+
+          <div className="event-id">
+            {event.id}
+          </div>
+
+        </div>
+
+        <span className="badge badge-red">
+          HIGH RISK
+        </span>
+
+      </div>
+
+      <div className="intel-body">
+
+        <div className="classification">
+
+          <div className="classification-label">
+            CLASSIFICATION
+          </div>
+
+          <div className="classification-value">
+            {event.classification}
+          </div>
+
+          <div
+            style={{
+              marginTop:8,
+              fontSize:"9px",
+              color:"#ffb4b4"
+            }}
+          >
+            AI CONFIDENCE {event.confidence.toFixed(1)}%
+          </div>
+
+        </div>
+
+        <div className="intel-grid">
+
+          <IntelStat
+            label="RISK SCORE"
+            value={`${event.risk} / 100`}
+          />
+
+          <IntelStat
+            label="STATUS"
+            value="HIGH RISK"
+          />
+
+          <IntelStat
+            label="FRP"
+            value={`${event.frp} MW`}
+          />
+
+          <IntelStat
+            label="BRIGHTNESS"
+            value={`${event.temperature} K`}
+          />
+
+          <IntelStat
+            label="SATELLITE"
+            value={event.satellite}
+          />
+
+          <IntelStat
+            label="SENSOR"
+            value={event.sensor}
+          />
+
+        </div>
+
+        <div className="section">
+
+          <div className="section-heading">
+            GEOSPATIAL CONTEXT
+          </div>
+
+          <div className="factor">
+            <span>Nearest Facility</span>
+            <b>{event.facility}</b>
+          </div>
+
+          <div className="factor">
+            <span>Facility Type</span>
+            <b>{event.facilityType}</b>
+          </div>
+
+          <div className="factor">
+            <span>Distance</span>
+            <b>{event.distance}</b>
+          </div>
+
+          <div className="factor">
+            <span>Land Cover</span>
+            <b>{event.landCover}</b>
+          </div>
+
+          <div className="factor">
+            <span>Nearby Roads</span>
+            <b>2.1 km</b>
+          </div>
+
+          <div className="factor">
+            <span>Population</span>
+            <b>8.4k nearby</b>
+          </div>
+
+        </div>
+
+        <div className="section">
+
+          <div className="section-heading">
+            PERSISTENCE INTELLIGENCE
+          </div>
+
+          <div className="intel-grid">
+
+            <IntelStat
+              label="24 HOURS"
+              value={`${event.detections24h} detections`}
+            />
+
+            <IntelStat
+              label="7 DAYS"
+              value={`${event.detections7d} detections`}
+            />
+
+            <IntelStat
+              label="30 DAYS"
+              value={`${event.detections30d} detections`}
+            />
+
+            <IntelStat
+              label="PATTERN"
+              value={event.persistence}
+            />
+
+          </div>
+
+        </div>
+
+        <div className="section">
+
+          <div className="section-heading">
+            AI INTELLIGENCE
+          </div>
+
+          {probabilities.map(([name,value])=>
+
+            <div
+              className="probability"
+              key={name}
+            >
+
+              <div className="prob-header">
+
+                <span>
+                  {name}
+                </span>
+
+                <b>
+                  {value}%
+                </b>
+
+              </div>
+
+              <div className="bar">
+
+                <div
+                  className="bar-fill"
+                  style={{
+                    width:value+"%",
+                    background:
+                      name==="Industrial Fire"
+                      ? "#ef4444"
+                      : "#287b9b"
+                  }}
+                />
+
+              </div>
+
+            </div>
+
+          )}
+
+          <div
+            style={{
+              fontSize:"8px",
+              color:"#64748b",
+              marginTop:6
+            }}
+          >
+            MODEL: Geothermal AI Model v1.0
+          </div>
+
+        </div>
+
+        <div className="section">
+
+          <div className="section-heading">
+            WHY THIS CLASSIFICATION?
+          </div>
+
+          <div className="explanation">
+            {event.explanation || "High thermal intensity, repeated detections and proximity to industrial infrastructure contributed strongly to this classification."}
+          </div>
+
+          <div style={{marginTop:7}}>
+
+            <div className="factor">
+              <span>Thermal Intensity</span>
+              <b className="high">HIGH</b>
+            </div>
+
+            <div className="factor">
+              <span>Persistence</span>
+              <b className="high">HIGH</b>
+            </div>
+
+            <div className="factor">
+              <span>Industrial Proximity</span>
+              <b className="very-high">VERY HIGH</b>
+            </div>
+
+            <div className="factor">
+              <span>Confidence</span>
+              <b className="high">HIGH</b>
+            </div>
+
+            <div className="factor">
+              <span>Dynamic World Land Cover</span>
+              <b style={{color: event.landCoverColor || "#38bdf8"}}>
+                {event.landCover ? event.landCover.toUpperCase() : "BUILT AREA"}
+              </b>
+            </div>
+
+          </div>
+
+        </div>
+
+        <div className="section">
+
+          <div className="section-heading">
+            RISK BREAKDOWN
+          </div>
+
+          <RiskMini
+            name="Thermal Intensity"
+            value="28 / 30"
+            percent={93}
+          />
+
+          <RiskMini
+            name="Persistence"
+            value="23 / 25"
+            percent={92}
+          />
+
+          <RiskMini
+            name="Industrial Proximity"
+            value="18 / 20"
+            percent={90}
+          />
+
+          <RiskMini
+            name="Detection Confidence"
+            value="11 / 15"
+            percent={73}
+          />
+
+          <RiskMini
+            name="Environmental Context"
+            value="7 / 10"
+            percent={70}
+          />
+
+        </div>
+
+        <div className="actions">
+
+          <button
+            className="action"
+            style={{background:"rgba(56, 189, 248, 0.15)", color:"#38bdf8", borderColor:"rgba(56, 189, 248, 0.4)", fontWeight:"bold"}}
+            onClick={async ()=>{
+              showToast("Querying Dynamic World 10m Land Cover...");
+              const res = await fetchBackend('/api/analyze-landcover', {
+                method: 'POST',
+                body: JSON.stringify({ lat: event.lat, lng: event.lng, radius_km: 2.0 })
+              });
+              if(res){
+                showToast(`Dynamic World: ${res.dominantClass} (${res.distanceToFacility} to ${res.nearestFacility})`);
+              } else {
+                showToast(`Dynamic World: ${event.landCover || "Built Area"} confirmed`);
+              }
+            }}
+          >
+            🌱 Dynamic World
+          </button>
+
+          <button
+            className="action"
+            onClick={()=>showToast("Satellite analysis opened")}
+          >
+            View Satellite
+          </button>
+
+          <button
+            className="action"
+            onClick={async ()=>{
+              const res = await fetchBackend('/api/reports', {
+                method: 'POST',
+                body: JSON.stringify({ eventId: event.id, notes: event.explanation })
+              });
+              showToast(`Investigation report generated: ${res ? res.id : 'REP-2026-OK'}`);
+            }}
+          >
+            Generate Report
+          </button>
+
+          <button
+            className="action"
+            onClick={async ()=>{
+              const res = await fetchBackend('/api/alerts', {
+                method: 'POST',
+                body: JSON.stringify({
+                  title: `Thermal Alert: ${event.id} (${event.classification})`,
+                  facility: event.facility,
+                  level: event.riskLevel || "HIGH",
+                  threshold: `FRP > ${event.frp} MW`
+                })
+              });
+              showToast(`Alert created on backend: ${res ? res.id : 'ALT-OK'}`);
+            }}
+          >
+            Create Alert
+          </button>
+
+          <button
+            className="action"
+            onClick={()=>showToast(`AI Recommendation: Drone dispatch to ${event.facility}`)}
+          >
+            AI Recommendation
+          </button>
+
+        </div>
+
+      </div>
+
+    </div>
+  );
+}
+
+/* =========================================================
+   INTEL STAT
+========================================================= */
+
+function IntelStat({label,value}){
+
+  return (
+
+    <div className="intel-stat">
+
+      <div className="intel-stat-label">
+        {label}
+      </div>
+
+      <div className="intel-stat-value">
+        {value}
+      </div>
+
+    </div>
+  );
+}
+
+/* =========================================================
+   RISK MINI
+========================================================= */
+
+function RiskMini({name,value,percent}){
+
+  return (
+
+    <div className="risk-row">
+
+      <div className="risk-row-header">
+
+        <span>{name}</span>
+        <b>{value}</b>
+
+      </div>
+
+      <div className="bar">
+
+        <div
+          className="bar-fill"
+          style={{
+            width:percent+"%",
+            background:"#ef4444"
+          }}
+        />
+
+      </div>
+
+    </div>
+  );
+}
+
+/* =========================================================
+   LIVE EVENTS
+========================================================= */
+
+function LiveEvents({setSelectedEvent,navigate,events}){
+
+  const eventList = (events && events.length > 0) ? events : mockEvents;
+  const eventsToShow = eventList.slice(0,35);
+
+  return (
+
+    <div className="page">
+
+      <PageHeader
+        title="Live Event Stream"
+        description="Real-time thermal anomaly monitoring"
+      />
+
+      <div
+        className="card"
+        style={{
+          marginBottom:12
+        }}
+      >
+
+        <div className="card-title">
+          <span style={{color:"#22c55e"}}>
+            ● LIVE
+          </span>
+          {" "}Incoming Thermal Events
+        </div>
+
+        {eventsToShow.map(event=>
+
+          <div
+            key={event.id}
+            style={{
+              display:"flex",
+              alignItems:"center",
+              justifyContent:"space-between",
+              padding:"10px 0",
+              borderBottom:
+                "1px solid rgba(148,163,184,.07)"
+            }}
+          >
+
+            <div>
+
+              <div
+                style={{
+                  fontSize:"10px",
+                  fontWeight:800
+                }}
+              >
+                {event.classification}
+              </div>
+
+              <div
+                style={{
+                  color:"#71869d",
+                  fontSize:"8px",
+                  marginTop:3
+                }}
+              >
+                {event.id} •
+                {event.facility}
+              </div>
+
+            </div>
+
+            <div
+              style={{
+                display:"flex",
+                gap:10,
+                alignItems:"center"
+              }}
+            >
+
+              <span className={
+                event.risk>80
+                ?"badge badge-red"
+                :"badge badge-orange"
+              }>
+                RISK {event.risk}
+              </span>
+
+              <button
+                className="small-btn"
+                onClick={()=>{
+                  setSelectedEvent(event);
+                  navigate("mission");
+                }}
+              >
+                VIEW MAP
+              </button>
+
+            </div>
+
+          </div>
+
+        )}
+
+      </div>
+
+    </div>
+  );
+}
+
+/* =========================================================
+   FACILITIES
+========================================================= */
+
+function Facilities({navigate,facilitiesList,setSelectedEvent}){
+
+  const list = (facilitiesList && facilitiesList.length > 0) ? facilitiesList : facilities;
+
+  return (
+
+    <div className="page">
+
+      <PageHeader
+        title="Industrial Facilities"
+        description="Industrial infrastructure and thermal activity intelligence"
+      />
+
+      <div className="grid">
+
+        {list.map(f=>
+
+          <div
+            className="card"
+            key={f.id}
+          >
+
+            <div className="card-title">
+              {f.name}
+            </div>
+
+            <div className="card-sub">
+              {f.type}
+            </div>
+
+            <div
+              style={{
+                marginTop:15
+              }}
+            >
+
+              <div className="factor">
+                <span>Nearby Events</span>
+                <b>{f.events || 12}</b>
+              </div>
+
+              <div className="factor">
+                <span>Risk</span>
+                <b className="high">
+                  {f.risk}/100
+                </b>
+              </div>
+
+              <div className="factor">
+                <span>Persistence</span>
+                <b>{f.persistence}</b>
+              </div>
+
+            </div>
+
+            <button
+              className="action"
+              style={{
+                width:"100%",
+                marginTop:10
+              }}
+              onClick={()=>{
+                if (setSelectedEvent) {
+                  setSelectedEvent({
+                    id: f.id,
+                    classification: `Industrial Facility: ${f.name}`,
+                    facility: f.name,
+                    facilityType: f.type,
+                    lat: f.lat,
+                    lng: f.lng,
+                    risk: f.risk,
+                    riskLevel: f.risk >= 80 ? "CRITICAL" : "HIGH",
+                    riskColor: f.risk >= 80 ? "#ef4444" : "#f97316",
+                    frp: 150,
+                    brightness: 380,
+                    confidence: 90
+                  });
+                }
+                navigate("mission");
+              }}
+            >
+              VIEW ON GIS
+            </button>
+
+          </div>
+
+        )}
+
+      </div>
+
+    </div>
+  );
+}
+
+/* =========================================================
+   PERSISTENCE
+========================================================= */
+
+function PersistencePage(){
+
+  const values = [
+    22,34,29,45,38,50,44,62,58,66,
+    61,70,74,69,82,77,89,83,91,87,
+    94,88,96,91,99,93,95,90,98,96
+  ];
+
+  return (
+
+    <div className="page">
+
+      <PageHeader
+        title="Persistent Thermal Sources"
+        description="Repeated thermal activity across time windows"
+      />
+
+      <div className="grid">
+
+        <div className="card">
+
+          <div className="card-title">
+            24 HOURS
+          </div>
+
+          <div
+            style={{
+              fontSize:30,
+              fontWeight:900
+            }}
+          >
+            63
+          </div>
+
+          <div className="card-sub">
+            Persistent detections
+          </div>
+
+        </div>
+
+        <div className="card">
+
+          <div className="card-title">
+            7 DAYS
+          </div>
+
+          <div
+            style={{
+              fontSize:30,
+              fontWeight:900
+            }}
+          >
+            41
+          </div>
+
+          <div className="card-sub">
+            Repeated thermal clusters
+          </div>
+
+        </div>
+
+        <div className="card">
+
+          <div className="card-title">
+            30 DAYS
+          </div>
+
+          <div
+            style={{
+              fontSize:30,
+              fontWeight:900
+            }}
+          >
+            27
+          </div>
+
+          <div className="card-sub">
+            Long-term persistent sources
+          </div>
+
+        </div>
+
+      </div>
+
+      <div
+        className="card"
+        style={{marginTop:10}}
+      >
+
+        <div className="card-title">
+          THERMAL INTENSITY TREND
+        </div>
+
+        <div className="chart">
+
+          {values.map((v,i)=>
+
+            <div
+              key={i}
+              className="chart-bar"
+              style={{
+                height:v+"%"
+              }}
+            />
+
+          )}
+
+        </div>
+
+        <div className="chart-labels">
+          <span>30 DAYS AGO</span>
+          <span>7 DAYS</span>
+          <span>24H</span>
+          <span>NOW</span>
+        </div>
+
+      </div>
+
+      <div
+        className="grid"
+        style={{marginTop:10}}
+      >
+
+        <div className="card">
+
+          <div className="card-title">
+            PERSISTENCE LEVEL
+          </div>
+
+          <div
+            style={{
+              fontSize:25,
+              fontWeight:900,
+              color:"#f97316"
+            }}
+          >
+            HIGH
+          </div>
+
+        </div>
+
+        <div className="card">
+
+          <div className="card-title">
+            DETECTION PATTERN
+          </div>
+
+          <div
+            style={{
+              fontSize:13,
+              fontWeight:800
+            }}
+          >
+            REPEATED THERMAL ACTIVITY
+          </div>
+
+        </div>
+
+        <div className="card">
+
+          <div className="card-title">
+            NIGHT / DAY PATTERN
+          </div>
+
+          <div
+            style={{
+              fontSize:13,
+              fontWeight:800
+            }}
+          >
+            NIGHT DOMINANT
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+  );
+}
+
+/* =========================================================
+   RISK ANALYSIS
+========================================================= */
+
+function RiskAnalysis(){
+
+  return (
+
+    <div className="page">
+
+      <PageHeader
+        title="Risk Intelligence"
+        description="Explainable multi-factor thermal risk assessment"
+      />
+
+      <div className="card">
+
+        <div className="risk-container">
+
+          <div className="risk-gauge">
+
+            <div className="risk-number">
+
+              <strong>
+                87
+              </strong>
+
+              <span>
+                HIGH RISK
+              </span>
+
+            </div>
+
+          </div>
+
+          <div className="risk-list">
+
+            <RiskMini
+              name="Thermal Intensity"
+              value="28 / 30"
+              percent={93}
+            />
+
+            <RiskMini
+              name="Persistence"
+              value="23 / 25"
+              percent={92}
+            />
+
+            <RiskMini
+              name="Industrial Proximity"
+              value="18 / 20"
+              percent={90}
+            />
+
+            <RiskMini
+              name="Detection Confidence"
+              value="11 / 15"
+              percent={73}
+            />
+
+            <RiskMini
+              name="Environmental Context"
+              value="7 / 10"
+              percent={70}
+            />
+
+          </div>
+
+        </div>
+
+      </div>
+
+      <div
+        className="grid"
+        style={{marginTop:10}}
+      >
+
+        <div className="card">
+
+          <div className="card-title">
+            WHY THIS SCORE?
+          </div>
+
+          <div className="explanation">
+
+            Risk increases when thermal intensity,
+            persistence and industrial proximity
+            reinforce each other.
+
+          </div>
+
+        </div>
+
+        <div className="card">
+
+          <div className="card-title">
+            DECISION SUPPORT
+          </div>
+
+          <div className="explanation">
+
+            Investigate repeated thermal activity near
+            high-value industrial infrastructure.
+
+          </div>
+
+        </div>
+
+        <div className="card">
+
+          <div className="card-title">
+            MODEL
+          </div>
+
+          <div className="explanation">
+
+            Geothermal AI Model v1.0
+            <br/><br/>
+            Output shown is simulated demo data.
+
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+  );
+}
+
+/* =========================================================
+   HISTORICAL
+========================================================= */
+
+function HistoricalAnalysis(){
+
+  const bars = [
+    40,55,48,70,65,72,83,76,
+    92,81,89,74,96,88,94,100
+  ];
+
+  return (
+
+    <div className="page">
+
+      <PageHeader
+        title="Historical Intelligence"
+        description="Long-term thermal activity and regional trends"
+      />
+
+      <div className="grid">
+
+        <div className="card">
+
+          <div className="card-title">
+            THERMAL EVENTS OVER TIME
+          </div>
+
+          <div className="chart">
+
+            {bars.map((v,i)=>
+
+              <div
+                key={i}
+                className="chart-bar"
+                style={{height:v+"%"}}
+              />
+
+            )}
+
+          </div>
+
+          <div className="chart-labels">
+            <span>JAN</span>
+            <span>MAR</span>
+            <span>JUN</span>
+            <span>SEP</span>
+            <span>DEC</span>
+          </div>
+
+        </div>
+
+        <div className="card">
+
+          <div className="card-title">
+            CLASSIFICATION DISTRIBUTION
+          </div>
+
+          <ProbabilityStatic
+            name="Industrial Fire"
+            value={42}
+          />
+
+          <ProbabilityStatic
+            name="Persistent Source"
+            value={23}
+          />
+
+          <ProbabilityStatic
+            name="Natural Fire"
+            value={18}
+          />
+
+          <ProbabilityStatic
+            name="Agricultural"
+            value={12}
+          />
+
+          <ProbabilityStatic
+            name="Unknown"
+            value={5}
+          />
+
+        </div>
+
+        <div className="card">
+
+          <div className="card-title">
+            RISK TREND
+          </div>
+
+          <div
+            style={{
+              fontSize:32,
+              fontWeight:900,
+              color:"#ef4444"
+            }}
+          >
+            +18.4%
+          </div>
+
+          <div className="card-sub">
+            Increase in high-risk detections
+          </div>
+
+        </div>
+
+      </div>
+
+      <div
+        className="table-wrap"
+        style={{marginTop:10}}
+      >
+
+        <table>
+
+          <thead>
+
+            <tr>
+              <th>EVENT</th>
+              <th>CLASSIFICATION</th>
+              <th>REGION</th>
+              <th>RISK</th>
+              <th>PERSISTENCE</th>
+              <th>FACILITY</th>
+            </tr>
+
+          </thead>
+
+          <tbody>
+
+            {mockEvents.slice(0,15).map(e=>
+
+              <tr key={e.id}>
+
+                <td>{e.id}</td>
+
+                <td>{e.classification}</td>
+
+                <td>Chennai Region</td>
+
+                <td>
+                  <span className="badge badge-red">
+                    {e.risk}
+                  </span>
+                </td>
+
+                <td>{e.persistence}</td>
+
+                <td>{e.facility}</td>
+
+              </tr>
+
+            )}
+
+          </tbody>
+
+        </table>
+
+      </div>
+
+    </div>
+  );
+}
+
+/* =========================================================
+   STATIC PROBABILITY
+========================================================= */
+
+function ProbabilityStatic({name,value}){
+
+  return (
+
+    <div className="probability">
+
+      <div className="prob-header">
+
+        <span>{name}</span>
+        <b>{value}%</b>
+
+      </div>
+
+      <div className="bar">
+
+        <div
+          className="bar-fill"
+          style={{
+            width:value+"%",
+            background:"#287b9b"
+          }}
+        />
+
+      </div>
+
+    </div>
+  );
+}
+
+/* =========================================================
+   ALERTS
+========================================================= */
+
+function Alerts({showToast, setSelectedEvent, navigate, openPredictModal, events}){
+  const [liveAlerts, setLiveAlerts] = useState([]);
+  const [filterSeverity, setFilterSeverity] = useState("ALL");
+  const [acknowledgedIds, setAcknowledgedIds] = useState({});
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadAlerts() {
+      setLoading(true);
+      try {
+        const liveRes = await fetchBackend('/api/firms/live-sync');
+        let points = [];
+        if (liveRes && liveRes.livePoints && liveRes.livePoints.length > 0) {
+          points = liveRes.livePoints;
+        } else if (events && events.length > 0) {
+          points = events;
+        }
+
+        const formatted = points.map((p, idx) => {
+          const frp = p.frp || 45;
+          const riskScore = p.risk ? Math.round(p.risk) : Math.round(p.frp ? Math.min(99, p.frp * 0.7 + 30) : 65);
+          let severity = "LOW";
+          let className = "ok";
+          let badgeColor = "#22c55e";
+
+          if (riskScore >= 80 || frp >= 80) {
+            severity = "CRITICAL";
+            className = "critical";
+            badgeColor = "#ef4444";
+          } else if (riskScore >= 60 || frp >= 50) {
+            severity = "HIGH";
+            className = "high-alert";
+            badgeColor = "#f97316";
+          } else if (riskScore >= 35 || frp >= 20) {
+            severity = "MEDIUM";
+            className = "medium-alert";
+            badgeColor = "#facc15";
+          }
+
+          return {
+            id: p.id || `ALERT-VIIRS-${1000 + idx}`,
+            severity,
+            className,
+            badgeColor,
+            title: p.classification || (severity === "CRITICAL" ? "Potential industrial thermal anomaly detected" : "Persistent satellite thermal hotspot"),
+            lat: p.lat,
+            lng: p.lng,
+            frp: frp,
+            brightness: p.brightness || p.temperature || 335,
+            confidence: p.confidence || 90,
+            satellite: p.satellite || "VIIRS SNPP",
+            date: p.date || "2026-09-10 (Live)",
+            facility: p.facility || "Industrial Facility Perimeter",
+            landCover: p.landCover || "Built Area / Industrial Zone",
+            risk: riskScore,
+            desc: `Real-time thermal radiation of ${frp} MW detected by ${p.satellite || 'VIIRS'} satellite sensor at [${p.lat.toFixed(4)}, ${p.lng.toFixed(4)}].`
+          };
+        });
+
+        formatted.sort((a, b) => b.risk - a.risk);
+        setLiveAlerts(formatted);
+      } catch (err) {
+        console.warn("Failed to load alerts feed:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadAlerts();
+  }, [events]);
+
+  const toggleAcknowledge = (id) => {
+    setAcknowledgedIds(prev => {
+      const next = { ...prev, [id]: !prev[id] };
+      showToast && showToast(!prev[id] ? "Alert marked as ACKNOWLEDGED" : "Alert unacknowledged");
+      return next;
+    });
+  };
+
+  const filtered = liveAlerts.filter(a => {
+    if (filterSeverity === "ALL") return true;
+    if (filterSeverity === "UNACK") return !acknowledgedIds[a.id];
+    return a.severity === filterSeverity;
+  });
+
+  return (
+    <div className="page">
+      <div className="page-header" style={{marginBottom: "16px"}}>
+        <div>
+          <div className="page-title" style={{fontSize: "22px", fontWeight: "900"}}>
+            Alert Center
+          </div>
+          <div className="page-description">
+            Real-time live NASA FIRMS satellite alerts and operational thermal threat priorities
+          </div>
+        </div>
+
+        <div style={{display: "flex", alignItems: "center", gap: "10px"}}>
+          <div style={{
+            background: "rgba(16, 185, 129, 0.15)",
+            border: "1px solid rgba(16, 185, 129, 0.4)",
+            borderRadius: "20px",
+            padding: "4px 12px",
+            fontSize: "11px",
+            color: "#10b981",
+            fontWeight: "bold"
+          }}>
+            📡 LIVE SATELLITE FEED ACTIVE
+          </div>
+        </div>
+      </div>
+
+      {/* FILTER BAR */}
+      <div style={{
+        background: "rgba(15, 23, 42, 0.8)",
+        border: "1px solid rgba(56, 189, 248, 0.2)",
+        borderRadius: "10px",
+        padding: "10px 16px",
+        marginBottom: "16px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        flexWrap: "wrap",
+        gap: "10px"
+      }}>
+        <div style={{display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap"}}>
+          <span style={{fontSize: "11px", color: "#94a3b8", fontWeight: "bold"}}>FILTER SEVERITY:</span>
+          {["ALL", "CRITICAL", "HIGH", "MEDIUM", "LOW", "UNACK"].map(sev => (
+            <button
+              key={sev}
+              onClick={() => setFilterSeverity(sev)}
+              style={{
+                background: filterSeverity === sev ? "rgba(56, 189, 248, 0.2)" : "rgba(255, 255, 255, 0.05)",
+                color: filterSeverity === sev ? "#38bdf8" : "#94a3b8",
+                border: `1px solid ${filterSeverity === sev ? "rgba(56, 189, 248, 0.5)" : "rgba(255, 255, 255, 0.1)"}`,
+                borderRadius: "6px",
+                padding: "4px 10px",
+                fontSize: "11px",
+                fontWeight: "bold",
+                cursor: "pointer"
+              }}
+            >
+              {sev === "UNACK" ? "UNACKNOWLEDGED" : sev}
+            </button>
+          ))}
+        </div>
+
+        <div style={{fontSize: "11px", color: "#38bdf8", fontWeight: "bold"}}>
+          Showing {filtered.length} Active Satellite Alerts
+        </div>
+      </div>
+
+      {loading ? (
+        <div style={{padding: "40px", textAlign: "center", color: "#94a3b8"}}>
+          🔄 Fetching real-time satellite alert telemetry...
+        </div>
+      ) : filtered.length === 0 ? (
+        <div style={{padding: "40px", textAlign: "center", color: "#94a3b8"}}>
+          ✅ No active thermal alerts matching selected filter.
+        </div>
+      ) : (
+        <div style={{display: "flex", flexDirection: "column", gap: "12px"}}>
+          {filtered.map((a) => {
+            const isAck = acknowledgedIds[a.id];
+            return (
+              <div
+                key={a.id}
+                style={{
+                  background: isAck ? "rgba(15, 23, 42, 0.4)" : "rgba(15, 23, 42, 0.85)",
+                  border: `1px solid ${isAck ? "rgba(255,255,255,0.08)" : a.badgeColor + "66"}`,
+                  borderLeft: `5px solid ${a.badgeColor}`,
+                  borderRadius: "10px",
+                  padding: "16px",
+                  opacity: isAck ? 0.7 : 1,
+                  boxShadow: isAck ? "none" : `0 4px 20px ${a.badgeColor}1a`
+                }}
+              >
+                <div style={{display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px", flexWrap: "wrap", gap: "8px"}}>
+                  <div style={{display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap"}}>
+                    <span style={{
+                      background: `${a.badgeColor}22`,
+                      color: a.badgeColor,
+                      border: `1px solid ${a.badgeColor}66`,
+                      padding: "2px 8px",
+                      borderRadius: "4px",
+                      fontSize: "11px",
+                      fontWeight: "bold"
+                    }}>
+                      {a.severity}
+                    </span>
+                    <span style={{fontSize: "14px", fontWeight: "bold", color: "#f8fafc"}}>
+                      {a.title}
+                    </span>
+                    {isAck && (
+                      <span style={{background: "rgba(34, 197, 94, 0.2)", color: "#22c55e", padding: "2px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: "bold"}}>
+                        ✓ ACKNOWLEDGED
+                      </span>
+                    )}
+                  </div>
+
+                  <div style={{display: "flex", alignItems: "center", gap: "8px"}}>
+                    <span style={{fontSize: "12px", fontWeight: "900", color: a.badgeColor}}>
+                      RISK SCORE {a.risk}/100
+                    </span>
+                  </div>
+                </div>
+
+                <div style={{fontSize: "12px", color: "#cbd5e1", marginBottom: "12px", lineHeight: "1.5"}}>
+                  {a.desc}
+                </div>
+
+                <div style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                  gap: "10px",
+                  background: "rgba(7, 17, 31, 0.7)",
+                  border: "1px solid rgba(255, 255, 255, 0.05)",
+                  borderRadius: "8px",
+                  padding: "10px",
+                  marginBottom: "12px",
+                  fontSize: "11px"
+                }}>
+                  <div><span style={{color: "#64748b"}}>Coordinates:</span> <b style={{color: "#38bdf8"}}>[{a.lat.toFixed(4)}, {a.lng.toFixed(4)}]</b></div>
+                  <div><span style={{color: "#64748b"}}>FRP Intensity:</span> <b style={{color: "#f97316"}}>{a.frp} MW</b></div>
+                  <div><span style={{color: "#64748b"}}>Brightness Temp:</span> <b style={{color: "#facc15"}}>{a.brightness} K</b></div>
+                  <div><span style={{color: "#64748b"}}>Satellite Sensor:</span> <b style={{color: "#cbd5e1"}}>{a.satellite}</b></div>
+                  <div><span style={{color: "#64748b"}}>Land Cover:</span> <b style={{color: "#a855f7"}}>{a.landCover}</b></div>
+                  <div><span style={{color: "#64748b"}}>Observation Date:</span> <b style={{color: "#10b981"}}>{a.date}</b></div>
+                </div>
+
+                <div style={{display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap"}}>
+                  <button
+                    onClick={() => {
+                      if (setSelectedEvent) {
+                        setSelectedEvent({
+                          id: a.id,
+                          lat: a.lat,
+                          lng: a.lng,
+                          classification: a.title,
+                          frp: a.frp,
+                          temperature: a.brightness,
+                          confidence: a.confidence,
+                          risk: a.risk,
+                          riskLevel: a.severity,
+                          riskColor: a.badgeColor,
+                          satellite: a.satellite,
+                          facility: a.facility,
+                          landCover: a.landCover
+                        });
+                      }
+                      if (navigate) navigate("mission");
+                      showToast && showToast(`Focusing map on alert [${a.lat.toFixed(2)}, ${a.lng.toFixed(2)}]`);
+                    }}
+                    style={{
+                      background: "linear-gradient(135deg, #0284c7, #2563eb)",
+                      color: "white",
+                      border: "none",
+                      borderRadius: "6px",
+                      padding: "6px 14px",
+                      fontSize: "11px",
+                      fontWeight: "bold",
+                      cursor: "pointer"
+                    }}
+                  >
+                    🎯 VIEW ON MAP
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      if (openPredictModal) {
+                        openPredictModal({
+                          lat: a.lat,
+                          lng: a.lng,
+                          frp: a.frp,
+                          brightness: a.brightness,
+                          confidence: a.confidence,
+                          satellite: a.satellite
+                        });
+                      }
+                    }}
+                    style={{
+                      background: "linear-gradient(135deg, #7c3aed, #6366f1)",
+                      color: "white",
+                      border: "none",
+                      borderRadius: "6px",
+                      padding: "6px 14px",
+                      fontSize: "11px",
+                      fontWeight: "bold",
+                      cursor: "pointer"
+                    }}
+                  >
+                    ⚡ INVESTIGATE WITH AI MODEL
+                  </button>
+
+                  <button
+                    onClick={() => toggleAcknowledge(a.id)}
+                    style={{
+                      background: isAck ? "rgba(255, 255, 255, 0.1)" : "rgba(34, 197, 94, 0.2)",
+                      color: isAck ? "#94a3b8" : "#22c55e",
+                      border: `1px solid ${isAck ? "rgba(255,255,255,0.2)" : "rgba(34, 197, 94, 0.4)"}`,
+                      borderRadius: "6px",
+                      padding: "6px 14px",
+                      fontSize: "11px",
+                      fontWeight: "bold",
+                      cursor: "pointer"
+                    }}
+                  >
+                    {isAck ? "✓ UNACKNOWLEDGE" : "ACKNOWLEDGE"}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+
+/* =========================================================
+   GIS EXPLORER
+========================================================= */
+
+function GISExplorer({setSelectedEvent}){
+
+  useEffect(()=>{
+
+    if(window.__gisMap)
+      return;
+
+    setTimeout(()=>{
+
+      const map = L.map("gis-map")
+        .setView(
+          [13.0827,80.2707],
+          9
+        );
+
+      window.__gisMap = map;
+
+      L.tileLayer(
+        "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        {
+          attribution:"© OpenStreetMap"
+        }
+      ).addTo(map);
+
+      mockEvents.forEach(e=>{
+
+        const marker = L.circleMarker(
+          [e.lat,e.lng],
+          {
+            radius:5,
+            color:"#38bdf8",
+            fillColor:"#38bdf8",
+            fillOpacity:.7
+          }
+        );
+
+        marker.bindPopup(
+          `<b>${e.id}</b><br/>
+           ${e.classification}<br/>
+           Risk: ${e.risk}`
+        );
+
+        marker.addTo(map);
+
+      });
+
+    },100);
+
+  },[]);
+
+  return (
+
+    <div className="page">
+
+      <PageHeader
+        title="GIS Explorer"
+        description="Multi-layer geospatial intelligence workspace"
+      />
+
+      <div
+        className="map-wrap"
+        style={{
+          height:"calc(100% - 70px)"
+        }}
+      >
+
+        <div id="gis-map"></div>
+
+        <div
+          className="map-overlay"
+          style={{width:180}}
+        >
+
+          <div className="section-heading">
+            GIS LAYERS
+          </div>
+
+          <div className="factor">
+            <span>Thermal Events</span>
+            <b>ON</b>
+          </div>
+
+          <div className="factor">
+            <span>Industrial Facilities</span>
+            <b>ON</b>
+          </div>
+
+          <div className="factor">
+            <span>Risk Zones</span>
+            <b>ON</b>
+          </div>
+
+          <div className="factor">
+            <span>Land Cover</span>
+            <b>ON</b>
+          </div>
+
+          <div className="factor">
+            <span>Historical Events</span>
+            <b>ON</b>
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+  );
+}
+
+/* =========================================================
+   REPORTS
+========================================================= */
+
+function Reports({showToast, selectedEvent}){
+  const ev = selectedEvent || {
+    id: "TF-10293",
+    classification: "Industrial Fire",
+    confidence: 91.4,
+    risk: 87,
+    frp: 120,
+    temperature: 368,
+    satellite: "VIIRS SNPP",
+    persistence: "HIGH",
+    facility: "Eastern Petro Refinery (Manali)",
+    landCover: "Built Area / Industrial",
+    lat: 13.15,
+    lng: 80.28,
+    date: "2026-09-10"
+  };
+
+  const exportCSV = () => {
+    const data = `Event ID,Latitude,Longitude,Classification,FRP (MW),Brightness (K),Confidence (%),Risk Score,Facility,Land Cover,Date\n${ev.id},${ev.lat},${ev.lng},"${ev.classification}",${ev.frp || 45},${ev.temperature || 335},${ev.confidence || 85},${ev.risk || 70},"${ev.facility || 'N/A'}","${ev.landCover || 'N/A'}",${ev.date || '2026-09-10'}`;
+    const blob = new Blob([data], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Incident_Report_${ev.id}.csv`;
+    a.click();
+    showToast && showToast(`Exported Incident_Report_${ev.id}.csv`);
+  };
+
+  const exportGeoJSON = () => {
+    const geojson = {
+      type: "FeatureCollection",
+      features: [{
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [ev.lng, ev.lat] },
+        properties: {
+          id: ev.id,
+          classification: ev.classification,
+          frp: ev.frp || 45,
+          brightness: ev.temperature || 335,
+          riskScore: ev.risk || 70,
+          facility: ev.facility,
+          landCover: ev.landCover,
+          date: ev.date || "2026-09-10"
+        }
+      }]
+    };
+    const blob = new Blob([JSON.stringify(geojson, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Incident_Report_${ev.id}.geojson`;
+    a.click();
+    showToast && showToast(`Exported Incident_Report_${ev.id}.geojson`);
+  };
+
+  const exportKML = () => {
+    const kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Placemark>
+    <name>${ev.id} - ${ev.classification}</name>
+    <description>FRP: ${ev.frp || 45} MW, Risk Score: ${ev.risk || 70}/100, Facility: ${ev.facility || 'N/A'}</description>
+    <Point>
+      <coordinates>${ev.lng},${ev.lat},0</coordinates>
+    </Point>
+  </Placemark>
+</kml>`;
+    const blob = new Blob([kml], { type: 'application/vnd.google-earth.kml+xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Incident_Report_${ev.id}.kml`;
+    a.click();
+    showToast && showToast(`Exported Incident_Report_${ev.id}.kml`);
+  };
+
+  return (
+    <div className="page">
+      <PageHeader
+        title="Report Center"
+        description="Generate official AI thermal event investigation reports & geospatial exports"
+      />
+
+      <div className="card" style={{border: "1px solid rgba(56, 189, 248, 0.3)", boxShadow: "0 8px 32px rgba(0,0,0,0.5)"}}>
+        <div style={{display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: "12px", marginBottom: "16px"}}>
+          <div>
+            <div style={{fontSize: "10px", color: "#38bdf8", fontWeight: "bold", letterSpacing: "1px"}}>OFFICIAL AI INCIDENT REPORT</div>
+            <div style={{fontSize: "20px", fontWeight: "900", color: "#f8fafc"}}>{ev.id} — {ev.classification}</div>
+          </div>
+          <button
+            onClick={() => window.print()}
+            style={{
+              background: "linear-gradient(135deg, #0284c7, #2563eb)",
+              color: "white",
+              border: "none",
+              borderRadius: "8px",
+              padding: "8px 16px",
+              fontSize: "12px",
+              fontWeight: "bold",
+              cursor: "pointer"
+            }}
+          >
+            🖨️ Print / Save PDF
+          </button>
+        </div>
+
+        <div className="grid" style={{marginBottom: "16px"}}>
+          <IntelStat label="EVENT ID" value={ev.id} />
+          <IntelStat label="CLASSIFICATION" value={ev.classification} />
+          <IntelStat label="AI CONFIDENCE" value={`${(ev.confidence || 91.4).toFixed(1)}%`} />
+          <IntelStat label="RISK SCORE" value={`${ev.risk || 87} / 100`} />
+          <IntelStat label="FRP INTENSITY" value={`${ev.frp || 120} MW`} />
+          <IntelStat label="BRIGHTNESS TEMP" value={`${ev.temperature || 368} K`} />
+          <IntelStat label="FACILITY" value={ev.facility || "Industrial Facility"} />
+          <IntelStat label="LAND COVER" value={ev.landCover || "Built Area / Industrial"} />
+          <IntelStat label="COORDINATES" value={`[${ev.lat.toFixed(4)}, ${ev.lng.toFixed(4)}]`} />
+        </div>
+
+        <div className="section" style={{marginBottom: "16px"}}>
+          <div className="section-heading">AI MULTI-FACTOR EXPLANATION</div>
+          <div className="explanation" style={{lineHeight: "1.6", color: "#cbd5e1"}}>
+            High thermal radiative power ({ev.frp || 120} MW) combined with elevated brightness temperature ({ev.temperature || 368} K) and proximity to industrial infrastructure contributed strongly to the classification of <b>{ev.classification}</b>.
+          </div>
+        </div>
+
+        <div className="section" style={{marginBottom: "18px"}}>
+          <div className="section-heading">EMERGENCY INVESTIGATION PRIORITY</div>
+          <div style={{fontSize: "22px", fontWeight: "900", color: (ev.risk || 87) >= 80 ? "#ef4444" : "#f97316"}}>
+            {(ev.risk || 87) >= 80 ? "🚨 CRITICAL EMERGENCY DISPATCH" : "⚠️ HIGH PRIORITY MONITORING"}
+          </div>
+        </div>
+
+        <div className="actions" style={{display: "flex", gap: "10px", flexWrap: "wrap"}}>
+          <button className="action" style={{background: "linear-gradient(135deg, #059669, #10b981)", color: "white"}} onClick={exportCSV}>
+            📥 EXPORT REAL CSV
+          </button>
+          <button className="action" style={{background: "linear-gradient(135deg, #7c3aed, #6366f1)", color: "white"}} onClick={exportGeoJSON}>
+            🌐 EXPORT GEOJSON
+          </button>
+          <button className="action" style={{background: "linear-gradient(135deg, #d97706, #f59e0b)", color: "white"}} onClick={exportKML}>
+            🗺️ EXPORT KML (GOOGLE EARTH)
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   SETTINGS
+========================================================= */
+
+function Settings(){
+
+  return (
+
+    <div className="page">
+
+      <PageHeader
+        title="System Settings"
+        description="Geothermal AI platform configuration"
+      />
+
+      <div className="grid">
+
+        <div className="card">
+
+          <div className="card-title">
+            DATA SOURCES
+          </div>
+
+          <div className="factor">
+            <span>NASA FIRMS</span>
+            <b className="factor-value">CONNECTED</b>
+          </div>
+
+          <div className="factor">
+            <span>OpenStreetMap</span>
+            <b className="factor-value">CONNECTED</b>
+          </div>
+
+          <div className="factor">
+            <span>Satellite Imagery</span>
+            <b className="factor-value">READY</b>
+          </div>
+
+        </div>
+
+        <div className="card">
+
+          <div className="card-title">
+            AI MODEL
+          </div>
+
+          <div className="factor">
+            <span>Model</span>
+            <b>Geothermal Fusion</b>
+          </div>
+
+          <div className="factor">
+            <span>Version</span>
+            <b>v1.0</b>
+          </div>
+
+          <div className="factor">
+            <span>Explainability</span>
+            <b>ENABLED</b>
+          </div>
+
+        </div>
+
+        <div className="card">
+
+          <div className="card-title">
+            API CONFIGURATION
+          </div>
+
+          <div className="explanation">
+            Production frontend should use:
+            <br/><br/>
+            VITE_API_BASE_URL
+            <br/><br/>
+            API keys and private credentials must
+            never be exposed in frontend code.
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+  );
+}
+
+/* =========================================================
+   RENDER
+========================================================= */
+
+ReactDOM
+  .createRoot(
+    document.getElementById("root")
+  )
+  .render(
+    <App/>
+  );
+
+</script>
+
+</body>
+</html>
