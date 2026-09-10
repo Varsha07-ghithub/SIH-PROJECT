@@ -13,3 +13,4 @@ requests>=2.31.0
 
 # Google Earth Engine API (Dynamic World Land Cover)
 earthengine-api>=0.1.350
+joblib
