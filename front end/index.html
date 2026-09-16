@@ -1141,7 +1141,7 @@ const { useState, useEffect, useMemo } = React;
    BACKEND API INTEGRATION CLIENT
 ========================================================= */
 
-const API_BASE = "https://sih-project-three-livid.vercel.app";
+const API_BASE = 'https://sih-project-three-livid.vercel.app';
 
 async function fetchBackend(endpoint, options = {}) {
   try {
@@ -1584,7 +1584,11 @@ function App(){
     async function initBackend(){
       try {
         const health = await fetchBackend('/api/health');
-        if(health && health.status && health.status.toUpperCase() === "ONLINE"){
+        if(health && (
+          String(health.status || '').toUpperCase() === 'HEALTHY' ||
+          String(health.status || '').toUpperCase() === 'ONLINE' ||
+          String(health.backend || '').toUpperCase() === 'ONLINE'
+        )){
           setBackendStatus("ONLINE");
           const [evData, facData, statsData] = await Promise.all([
             fetchBackend('/api/events?limit=120'),
