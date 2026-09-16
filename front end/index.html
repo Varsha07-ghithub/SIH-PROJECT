@@ -1141,9 +1141,7 @@ const { useState, useEffect, useMemo } = React;
    BACKEND API INTEGRATION CLIENT
 ========================================================= */
 
-const API_BASE = (window.location.protocol === 'file:' || !window.location.port)
-  ? 'http://127.0.0.1:8000'
-  : (window.location.port === '8000' ? '' : 'http://127.0.0.1:8000');
+const API_BASE = "https://sih-project-three-livid.vercel.app";
 
 async function fetchBackend(endpoint, options = {}) {
   try {
@@ -1586,7 +1584,7 @@ function App(){
     async function initBackend(){
       try {
         const health = await fetchBackend('/api/health');
-        if(health && health.status === "ONLINE"){
+        if(health && health.status && health.status.toUpperCase() === "ONLINE"){
           setBackendStatus("ONLINE");
           const [evData, facData, statsData] = await Promise.all([
             fetchBackend('/api/events?limit=120'),
@@ -1869,10 +1867,10 @@ function TopBar({toggleSidebar,showToast,backendStatus,openPredictModal}){
 
         <div
           className={`status ${backendStatus === "ONLINE" ? "status-online" : "status-offline"}`}
-          title="Backend Server: localhost:8000"
+          title="Backend Server: Vercel Production API"
         >
           <span className="live-dot" style={{background: backendStatus === "ONLINE" ? "#22c55e" : "#f97316"}}></span>
-          {backendStatus === "ONLINE" ? "BACKEND ONLINE (localhost:8000)" : "LOCAL MOCK MODE"}
+          {backendStatus === "ONLINE" ? "BACKEND ONLINE" : "LOCAL MOCK MODE"}
         </div>
 
         <div
